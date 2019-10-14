@@ -4,10 +4,13 @@ const
   _ = require('lodash');
 
 class ProcessServer {
-  constructor(io) {
-    this.io = io;
+  constructor() {
     this.processes = {}
-    io.on('connection', this.handleConnection);
+  }  
+
+  listen(io) {
+    this.io = io;
+    this.io.on('connection', this.handleConnection);
   }
 
   index = () => {

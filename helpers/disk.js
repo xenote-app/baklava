@@ -1,4 +1,5 @@
 const
+  https = require('https'),
   fs = require('fs'),
   path = require('path');
 
@@ -30,27 +31,40 @@ function setIndex(articleId, index) {
 function updateFile(articleId, file) {
   const
     folderPath = path.join('./', articleId),
-    filePath = path.join(folderPath, file.name);
+    filePath = path.join(folderPath, file.filename);
 
   if (!fs.existsSync(folderPath))
     fs.mkdirSync(folderPath);
 
-  if (file.content)
+  if (file.content) {
     fs.writeFileSync(filePath, file.content);
-
-  updateIndex(articleId, file);
-  return Promise.resolve();
+    updateIndex(articleId, file);
+    return Promise.resolve();
+  }
+  if (file.downloadUrl) {
+    const writeStream = fs.createWriteStream(filePath);
+    return (new Promise((resolve, reject) => {
+      https.get(file.downloadUrl, response => {
+        response.pipe(writeStream);
+        response.on('error', reject);
+        response.on('end', _ => {
+          updateIndex(articleId, file);
+          resolve();
+        });
+      });
+    }));
+  }
 }
 
 function updateIndex(articleId, file) {
   const index = getIndex(articleId);
-  index[file.name] = { name: file.name, version: file.version }
+  index[file.filename] = { filename: file.filename, version: file.version }
   setIndex(articleId, index);
 }
 
 
-function deleteFile(articleId, fileName, cb) {
-  console.log(`Deleting file "${fileName}" from "${articleId}"`)
+function deleteFile(articleId, filename, cb) {
+  console.log(`Deleting file "${filename}" from "${articleId}"`)
   cb(null);
   return null;
 }
