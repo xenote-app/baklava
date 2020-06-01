@@ -19,51 +19,53 @@ class ProcessServer {
 
   handleConnection = (socket) => {
     console.log('connected', socket.id);
-    socket.emit('a machine', { machine: getMachineInfo() });
-
-    socket.on('disconnect', _ => {
-      console.log('disconnected', socket.id);
-    });
-    
-    socket.on('q process index', _ => {
-      socket.emit('a process index', { index: this.index() });
-    });
-
-    socket.on('start process', opts => {
-      this.startProcess(opts);
-    });
+    socket.emit('a machine', getMachineInfo());
+    socket.emit('a process index', this.index());
+    socket.on('q process index', _ => socket.emit('a process index', this.index()));
+    socket.on('start process', opts => this.startProcess(opts));
+    socket.on('kill process', id => this.killProcess(id));
+    socket.on('disconnect', _ => console.log('disconnected', socket.id));
   }
 
   startProcess = (opts) => {
-    var { id, articleId, callerId } = opts;
-    var p = this.processes[id];
+    const
+      { command, elementId, articleId, articlePath, isCommon, appId  } = opts,
+      p = new Process({ caller: { elementId, articleId, isCommon, appId } });
 
-    if (p) {
-      console.log('process with id exists.', p.id);
-      p.destroy();
-    }
+    p.on('stdout', d => this.handleProcessDataEvent(p, 'stdout', d));
+    p.on('stderr', d => this.handleProcessDataEvent(p, 'stderr', d));
+    p.on('message', d => this.handleProcessDataEvent(p, 'message', d));
     
-    p = new Process(id, articleId, callerId);
-    this.processes[id] = p;
+    p.on('error', err => {
+      console.error(err);
+      this.io.emit('event process', { process: p.json(), error: err.toString(), event: 'error' })
+    });
 
-    p.on('stdout', d => this.handleProcessEvent(p, 'stdout', d));
-    p.on('stderr', d => this.handleProcessEvent(p, 'stderr', d));
-    p.on('message', d => this.handleProcessEvent(p, 'message', d));
-    p.on('close', d => this.handleProcessEvent(p, 'close', d));
-    p.run(opts);
+    p.on('close', d => {
+      this.io.emit('event process', { process: p.json(), event: 'end' });
+      setTimeout(_ => this.clearProcess(p.id), 10000);
+    });
 
-    this.io.emit('a process index', { index: this.index() });
+    p.run({ command: command, env: {}, subPath: articlePath.join('/') });
+    this.processes[p.id] = p;
+    this.io.emit('event process', { process: p.json(), event: 'start' });
   }
 
-  stopProcess(id) {
+  killProcess(id) {
     this.processes[id].stop();
   }
 
-  handleProcessEvent = (p, type, data) => {
-    this.io.emit('d process', { id: p.id, type: type, data: data});
-    
-    if (type === 'close')
-      this.io.emit('u process', p.json());
+  handleProcessDataEvent(p, type, data) {
+    this.io.emit('data process', { id: p.id, type: type, data: data});
+  }
+
+  clearProcess(id) {
+    if (!this.processes[id])
+      return;
+
+    this.processes[id].destroy();
+    delete this.processes[id];
+    this.io.emit('remove process', id);
   }
 }
 

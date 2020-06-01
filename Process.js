@@ -2,35 +2,30 @@ const
   _ = require('lodash'),
   pidusage = require('pidusage'),
   Emitter = require('events').EventEmitter,
-  spawn = require('child_process').spawn,
+  exec = require('child_process').exec,
   path = require('path');
 
 class Process {
-  constructor(id, articleId, callerId) {
-    this.id = id;
-    this.articleId = articleId;
-    this.callerId = callerId;
-
+  constructor({ caller }) {
+    this.id = (new Date).getTime();
+    this.caller = caller;
     this.emitter = new Emitter();
   }
 
   run(opts) {
     this.runOpts = opts;
-    console.log('running', opts);
 
-    var
-      { command, env, args, cwd } = opts,
-      childEnv = _.extend({}, process.env, env);
-    
-    if (childEnv['path+'])
-      childEnv.PATH = `${childEnv['path+']}:${childEnv.PATH}`;
-    
-    cwd = cwd || path.join(process.cwd(), this.articleId);
+    const
+      { command, env, subPath } = opts,
+      _env = _.extend({}, process.env, env),
+      _cwd = path.join(process.cwd(), subPath);
 
-    var child = this.child = spawn(command, args, {
-      cwd: cwd,
-      env: childEnv
-    });
+    var child = this.child = exec(command, { cwd: _cwd, env: _env });
+
+    child.on('error', err => {
+      this.status = 'error';
+      this.emit('error', err);
+    })
 
     child.stdout.on('data', (data) => {
       this.emit('stdout', data.toString());
@@ -57,8 +52,7 @@ class Process {
   json() {
     return {
       'id': this.id,
-      'articleId': this.articleId,
-      'callerId': this.callerId,
+      'caller': this.caller,
       'pid': this.child.pid,
       'opts': this.runOpts,
       'status': this.status,
