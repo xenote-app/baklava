@@ -37,8 +37,7 @@ class ProcessServer {
     p.on('message', d => this.handleProcessDataEvent(p, 'message', d));
     
     p.on('error', err => {
-      console.error(err);
-      this.io.emit('event process', { process: p.json(), error: err.toString(), event: 'error' })
+      this.io.emit('event process', { process: p.json(), error: err.stack.toString(), event: 'error' })
     });
 
     p.on('close', d => {
