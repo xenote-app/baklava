@@ -13,10 +13,30 @@ function getIndex(articleId) {
   const
     index = JSON.parse(fs.readFileSync(filePath)),
     folderPath = path.join('./', index.articlePath.join('/'));
-  
-  index.contents = fs.readdirSync(folderPath);
-  
+
+  index.folderContents = getFolderContents(folderPath);
+
   return index;
+}
+
+function getFolderContents(folderPath) {
+  const
+    all = fs.readdirSync(folderPath),
+    files = [],
+    folders = [];
+  
+  all.forEach(name => {
+    const isFolder = fs.lstatSync(path.join(folderPath, name)).isDirectory();
+    if (isFolder)
+      folders.push(name);
+    else
+      files.push(name);
+  });
+  return { files, folders };
+}
+
+function deleteContent(contentPath) {
+  return {}
 }
 
 function setIndex(articleId, index) {
@@ -26,15 +46,17 @@ function setIndex(articleId, index) {
 }
 
 function initialize({ articleId, articlePath }) {
-  const folderPath = path.join('./', articlePath.join('/'));
+  const
+    folderPath = path.join('./', articlePath.join('/')),
+    index = { articlePath };
+  
+  console.log('Initializing for ', articleId, index);
 
   if (fs.existsSync(folderPath)) {
-    fs.rmdirSync(folderPath);
+    fs.rmdirSync(folderPath, { recursive: true });
   }
   fs.mkdirSync(folderPath, { recursive: true });
-
-  const index = { articlePath };
-  console.log('Initializing for ', articleId, index);
+  
   return setIndex(articleId, index);
 }
 

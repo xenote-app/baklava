@@ -11,6 +11,16 @@ class FileSyncServer {
       res.send(disk.getIndex(req.params.articleId));
     });
 
+    // folder content
+    router.get('/article/:articleId/index/:folderPath', (req, res) => {
+      res.send(disk.getFolderContent(req.params.folderPath));
+    });
+
+    // delete
+    router.delete('/article/:articleId/index/:contentPath', (req, res) => {
+      res.send(disk.delete(req.params.contentPath));
+    });
+
     // initialize
     router.post('/article/:articleId/initialize', (req, res) => {
       res.send(disk.initialize({

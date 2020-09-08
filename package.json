@@ -16,6 +16,7 @@
     "commander": "^3.0.0",
     "cors": "^2.8.5",
     "express": "^4.17.1",
+    "glob": "^7.1.6",
     "lodash": "^4.17.15",
     "pidusage": "^2.0.17",
     "socket.io": "^2.2.0"

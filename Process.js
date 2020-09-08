@@ -7,7 +7,7 @@ const
 
 class Process {
   constructor({ caller }) {
-    this.id = (new Date).getTime();
+    this.id = (new Date).getTime().toString();
     this.caller = caller;
     this.emitter = new Emitter();
   }
@@ -36,11 +36,17 @@ class Process {
     });
 
     child.on('message', message => {
+      console.log('incoming');
+      console.log(message);
+      
       this.emit('message', message);
+      if (message === 'ping') {
+        child.send('pong');
+      }
     });
 
     child.on('close', (code) => {
-      this.status = 'exit';
+      this.status = 'ended';
       this.exitCode = code;
       this.emit('close', code);
     });
@@ -88,7 +94,7 @@ class Process {
   }
 
   stop() {
-    if (!this.status === 'running')
+    if (this.status === 'running')
       this.child.kill();
   }
 

@@ -4,7 +4,6 @@ var
   program = require('commander'),
   Server = require('../Server');
 
-
 program.version('0.1');
 
 program.command('launch')
