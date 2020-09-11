@@ -1,14 +1,14 @@
 const
   { getMachineInfo } = require('./helpers/machine'),
   Process = require('./Process'),
+  Emitter = require('events').EventEmitter,
+  config = require('./config'),
   _ = require('lodash');
 
 class ProcessServer {
-  constructor() {
+  constructor({ io }) {
     this.processes = {}
-  }  
-
-  listen(io) {
+    this.emitter = new Emitter();
     this.io = io;
     this.io.on('connection', this.handleConnection);
   }
@@ -25,6 +25,7 @@ class ProcessServer {
     socket.on('start process', opts => this.startProcess(opts));
     socket.on('kill process', id => this.killProcess(id));
     socket.on('disconnect', _ => console.log('disconnected', socket.id));
+    socket.on('vani data', data => this.emitter.emit('vani data', data));
   }
 
   startProcess = (opts) => {
@@ -45,7 +46,11 @@ class ProcessServer {
       setTimeout(_ => this.clearProcess(p.id), 10000);
     });
 
-    p.run({ command: command, env: {}, subPath: articlePath.join('/') });
+    p.run({
+      command: command,
+      env: { vaniPort: config.vaniPort },
+      subPath: articlePath.join('/')
+    });
     this.processes[p.id] = p;
     this.io.emit('event process', { process: p.json(), event: 'start' });
   }
