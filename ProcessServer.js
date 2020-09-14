@@ -25,7 +25,7 @@ class ProcessServer {
     socket.on('start process', opts => this.startProcess(opts));
     socket.on('kill process', id => this.killProcess(id));
     socket.on('disconnect', _ => console.log('disconnected', socket.id));
-    socket.on('vani data', data => this.emitter.emit('vani data', data));
+    socket.on('vani-message', data => this.emitter.emit('vani-message', data));
   }
 
   startProcess = (opts) => {
@@ -70,6 +70,10 @@ class ProcessServer {
     this.processes[id].destroy();
     delete this.processes[id];
     this.io.emit('remove process', id);
+  }
+
+  emit(topic, data) {
+    this.io.emit(topic, data);
   }
 }
 

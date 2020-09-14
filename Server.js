@@ -21,6 +21,10 @@ class Server {
     app.use(bodyParser.json());
     app.use('/disk', fileSyncServer.router);
     app.use('*', (req, res) => res.status(404).send('404 not found'));
+
+
+    processServer.emitter.on('vani-message', data => vaniBroker.handleMessage(data));
+    vaniBroker.emitter.on('vani-message', data => processServer.emit('vani-message', data));
     
     http.listen(config.serverPort, () => {
       console.log('Server running on port', config.serverPort)

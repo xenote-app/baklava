@@ -1,6 +1,7 @@
 const
   fs = require('fs'),
   net = require('net'),
+  Emitter = require('events').EventEmitter,
   BufferHandler = require('./BufferHandler.js');
 
 const dispatch = (socket, obj) => socket.write(JSON.stringify(obj) + '\n');
@@ -46,9 +47,9 @@ class VaniBroker {
       if (sockets[recepientId])
         dispatch(sockets[recepientId], request);
     } else {
-      for (id in sockets) {
+      for (var id in sockets) {
         if (id !== senderId)
-          dispatch(socket, request);
+          dispatch(sockets[id], request);
       }
     }
   }
@@ -64,47 +65,35 @@ class VaniBroker {
     this.unregister(socket);
   }
 
-  debug() {
-    console.log.apply(console, arguments);
-  }
-
   constructor(o) {
     this.port = o.port;
-    this.processServer = o.processServer;
-    this.processServer.emitter.on('vani data', data => this.handleMessage(data));
-    this.createServer();
+    this.emitter = new Emitter();
+    this.server = net.createServer(s => this.handleSocket(s));
   }
 
-  createServer() {
-    const server = this.server = net.createServer((socket) => {
-      const bufferHandler = new BufferHandler(request => {
-        if (request.topic === 'register') {
-          this.register({
-            socket: socket,
-            channel: request.channel,
-            type: request.type,
-            resolveId: request.resolveId
-          });
-
-        } else if (request.topic === 'message') {
-          const data = Object.assign({}, request, {
-            senderId: socket.id,
-            channel: socket.channel
-          });
-          this.handleMessage(data);
-          this.processServer.io.emit('vani data', data);
-
-        } else {
-          this.debug('handler not found:', request.topic);
-          
-        }
-      });
-
-      socket.on('data', chunk => bufferHandler.pump(chunk));
-      socket.on('end', _ => this.handleSocketEnd(socket));
+  handleSocket(socket) {
+    const bufferHandler = new BufferHandler(request => {
+      if (request.topic === 'register') {
+        this.register({
+          socket: socket,
+          channel: request.channel,
+          type: request.type,
+          resolveId: request.resolveId
+        });
+      } else if (request.topic === 'message') {
+        const data = Object.assign({}, request, {
+          senderId: socket.id,
+          channel: socket.channel
+        });
+        this.handleMessage(data);
+        this.emitter.emit('vani-message', data);
+      } else {
+        console.error('Vani handler not found:', request.topic);
+      }
     });
 
-    server.on('error', err => { throw err });
+    socket.on('data', chunk => bufferHandler.pump(chunk));
+    socket.on('end', _ => this.handleSocketEnd(socket));
   }
 
   listen(cb) {
