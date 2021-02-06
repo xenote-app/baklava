@@ -30,8 +30,8 @@ class ProcessServer {
 
   startProcess = (opts) => {
     const
-      { command, elementId, articleId, articlePath, isCommon, appId  } = opts,
-      p = new Process({ caller: { elementId, articleId, isCommon, appId } });
+      { command, elementId, docId, docPath, isCommon, appId  } = opts,
+      p = new Process({ caller: { elementId, docId, isCommon, appId } });
 
     p.on('stdout', d => this.handleProcessDataEvent(p, 'stdout', d));
     p.on('stderr', d => this.handleProcessDataEvent(p, 'stderr', d));
@@ -49,7 +49,7 @@ class ProcessServer {
     p.run({
       command: command,
       env: { vaniPort: config.vaniPort },
-      subPath: articlePath.join('/')
+      subPath: docPath.join('/')
     });
     this.processes[p.id] = p;
     this.io.emit('event process', { process: p.json(), event: 'start' });

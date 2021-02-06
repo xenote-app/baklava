@@ -7,33 +7,33 @@ class FileSyncServer {
     const router = this.router = express.Router();
 
     // index
-    router.get('/article/:articleId/index', (req, res) => {
-      res.send(disk.getIndex(req.params.articleId));
+    router.get('/doc/:docId/index', (req, res) => {
+      res.send(disk.getIndex(req.params.docId));
     });
 
     // folder content
-    router.get('/article/:articleId/index/:folderPath', (req, res) => {
+    router.get('/doc/:docId/index/:folderPath', (req, res) => {
       res.send(disk.getFolderContent(req.params.folderPath));
     });
 
     // delete
-    router.delete('/article/:articleId/index/:contentPath', (req, res) => {
+    router.delete('/doc/:docId/index/:contentPath', (req, res) => {
       res.send(disk.delete(req.params.contentPath));
     });
 
     // initialize
-    router.post('/article/:articleId/initialize', (req, res) => {
+    router.post('/doc/:docId/initialize', (req, res) => {
       res.send(disk.initialize({
-        articleId: req.params.articleId,
-        articlePath: req.body.articlePath
+        docId: req.params.docId,
+        docPath: req.body.docPath
       }));
     });
     
     // post
-    router.post('/article/:articleId/files/:filename', (req, res) => {
+    router.post('/doc/:docId/files/:filename', (req, res) => {
       disk
         .addFile({
-          articleId: req.params.articleId,
+          docId: req.params.docId,
           filename: req.params.filename,
           file: req.body
         })
@@ -42,10 +42,10 @@ class FileSyncServer {
     });
 
     // delete
-    router.delete('/article/:articleId/files/:filename', (req, res) => {
+    router.delete('/doc/:docId/files/:filename', (req, res) => {
       disk
         .deleteFile({
-          articleId: req.params.articleId,
+          docId: req.params.docId,
           filename: req.params.filename
         })
         .then(_ => res.send('Done.'))

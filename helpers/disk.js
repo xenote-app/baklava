@@ -3,16 +3,16 @@ const
   fs = require('fs'),
   path = require('path');
 
-function getIndex(articleId) {
-  const filePath = path.join('./', `.index-${articleId}`);
-  console.log(articleId, filePath);
+function getIndex(docId) {
+  const filePath = path.join('./', `.index-${docId}`);
+  console.log(docId, filePath);
 
   if (!fs.existsSync(filePath))
     return {};
 
   const
     index = JSON.parse(fs.readFileSync(filePath)),
-    folderPath = path.join('./', index.articlePath.join('/'));
+    folderPath = path.join('./', index.docPath.join('/'));
 
   index.folderContents = getFolderContents(folderPath);
 
@@ -39,41 +39,41 @@ function deleteContent(contentPath) {
   return {}
 }
 
-function setIndex(articleId, index) {
-  const indexPath = path.join('./', `.index-${articleId}`);;
+function setIndex(docId, index) {
+  const indexPath = path.join('./', `.index-${docId}`);;
   fs.writeFileSync(indexPath, JSON.stringify(index, null, 2));
   return index;
 }
 
-function initialize({ articleId, articlePath }) {
+function initialize({ docId, docPath }) {
   const
-    folderPath = path.join('./', articlePath.join('/')),
-    index = { articlePath };
+    folderPath = path.join('./', docPath.join('/')),
+    index = { docPath };
   
-  console.log('Initializing for ', articleId, index);
+  console.log('Initializing for ', docId, index);
 
   if (fs.existsSync(folderPath)) {
     fs.rmdirSync(folderPath, { recursive: true });
   }
   fs.mkdirSync(folderPath, { recursive: true });
   
-  return setIndex(articleId, index);
+  return setIndex(docId, index);
 }
 
 
-function addFile({ articleId, file }) {
-  const index = getIndex(articleId);
+function addFile({ docId, file }) {
+  const index = getIndex(docId);
 
-  console.log('articleId', articleId);
+  console.log('docId', docId);
   console.log('saving file', file.filename, 'version', file.version);
 
   const
-    folderPath = index.articlePath.join('/'),
+    folderPath = index.docPath.join('/'),
     filePath = path.join('./', folderPath, file.filename);
 
   if (file.type === 'DocFile') {
     fs.writeFileSync(filePath, file.content);
-    updateFileIndex(articleId, file.filename, file.version);
+    updateFileIndex(docId, file.filename, file.version);
     return Promise.resolve();
 
   } else if (file.type === 'StoreFile') {
@@ -84,7 +84,7 @@ function addFile({ articleId, file }) {
         response.pipe(writeStream);
         response.on('error', reject);
         response.on('end', _ => {
-          updateFileIndex(articleId, file.filename, file.version);
+          updateFileIndex(docId, file.filename, file.version);
           resolve();
         });
       });
@@ -94,34 +94,34 @@ function addFile({ articleId, file }) {
   return Promise.reject('Unknown type');
 }
 
-function updateFileIndex(articleId, filename, version) {
+function updateFileIndex(docId, filename, version) {
   const
-    index = getIndex(articleId),
+    index = getIndex(docId),
     created = (new Date()).toISOString();
   index.files = index.files || {};
   index.files[filename] = { version, created };
-  setIndex(articleId, index);
+  setIndex(docId, index);
 }
 
-function removeFileIndex(articleId, filename) {
-  const index = getIndex(articleId);
+function removeFileIndex(docId, filename) {
+  const index = getIndex(docId);
   index.files = index.files || {};
   delete index.files[filename];
-  setIndex(articleId, index);
+  setIndex(docId, index);
 }
 
-function deleteFile({ articleId, filename }) {
-  const index = getIndex(articleId);
+function deleteFile({ docId, filename }) {
+  const index = getIndex(docId);
 
-  console.log('articleId', articleId);
+  console.log('docId', docId);
   console.log('Deleting file :', filename);
 
   const
-    folderPath = index.articlePath.join('/'),
+    folderPath = index.docPath.join('/'),
     filePath = path.join('./', folderPath, filename);
   
   fs.unlinkSync(filePath);
-  removeFileIndex(articleId, filename);
+  removeFileIndex(docId, filename);
 
   return Promise.resolve();
 }
