@@ -5,14 +5,17 @@ const
   FileSyncServer = require('./FileSyncServer'),
   ProcessServer = require('./ProcessServer'),
   VaniBroker = require('./VaniBroker'),
-  config = require('./config');
+  config = require('./config'),
+  SocketServer = require('socket.io').Server;
 
-class Server {  
+class Server {
   start() {
     const
       app = express(),
-      http = require('http').createServer(app),
-      io = require('socket.io')(http),
+      server = require('http').createServer(app),
+      io = new SocketServer(server, {
+        cors: { origin: '*' }
+      }),
       fileSyncServer = new FileSyncServer(),
       processServer = new ProcessServer({ io: io }),
       vaniBroker = new VaniBroker({ port: config.vaniPort, processServer: processServer });
@@ -21,12 +24,12 @@ class Server {
     app.use(bodyParser.json());
     app.use('/disk', fileSyncServer.router);
     app.use('*', (req, res) => res.status(404).send('404 not found'));
-
+    
 
     processServer.emitter.on('vani-message', data => vaniBroker.handleMessage(data));
     vaniBroker.emitter.on('vani-message', data => processServer.emit('vani-message', data));
     
-    http.listen(config.serverPort, () => {
+    server.listen(config.serverPort, () => {
       console.log('Server running on port', config.serverPort)
     });
     vaniBroker.listen(_ => console.log('Vani running on port', config.vaniPort));

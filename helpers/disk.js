@@ -12,7 +12,7 @@ function getIndex(docId) {
 
   const
     index = JSON.parse(fs.readFileSync(filePath)),
-    folderPath = path.join('./', index.docPath.join('/'));
+    folderPath = path.join('./', index.docPath);
 
   index.folderContents = getFolderContents(folderPath);
 
@@ -35,10 +35,6 @@ function getFolderContents(folderPath) {
   return { files, folders };
 }
 
-function deleteContent(contentPath) {
-  return {}
-}
-
 function setIndex(docId, index) {
   const indexPath = path.join('./', `.index-${docId}`);;
   fs.writeFileSync(indexPath, JSON.stringify(index, null, 2));
@@ -46,8 +42,9 @@ function setIndex(docId, index) {
 }
 
 function initialize({ docId, docPath }) {
+  console.log(docId, docPath);
   const
-    folderPath = path.join('./', docPath.join('/')),
+    folderPath = path.join('./', docPath),
     index = { docPath };
   
   console.log('Initializing for ', docId, index);
