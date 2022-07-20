@@ -65,7 +65,7 @@ function addFile({ docId, file }) {
   console.log('saving file', file.filename, 'version', file.version);
 
   const
-    folderPath = index.docPath.join('/'),
+    folderPath = index.docPath,
     filePath = path.join('./', folderPath, file.filename);
 
   if (file.type === 'DocFile') {
@@ -114,7 +114,7 @@ function deleteFile({ docId, filename }) {
   console.log('Deleting file :', filename);
 
   const
-    folderPath = index.docPath.join('/'),
+    folderPath = index.docPath,
     filePath = path.join('./', folderPath, filename);
   
   fs.unlinkSync(filePath);

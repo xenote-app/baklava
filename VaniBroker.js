@@ -7,6 +7,15 @@ const
 const dispatch = (socket, obj) => socket.write(JSON.stringify(obj) + '\n');
 
 class VaniBroker {
+  constructor({ port, processServer }) {
+    this.port = port;
+    this.emitter = new Emitter();
+    this.server = net.createServer(s => this.handleSocket(s));
+
+    processServer.emitter.on('vani-message', data => this.handleMessage(data));
+    this.emitter.on('vani-message', data => processServer.emit('vani-message', data));
+  }
+
   directories = {};
 
   getDirectory(channel) {
@@ -63,12 +72,6 @@ class VaniBroker {
 
   handleSocketEnd = (socket) => {
     this.unregister(socket);
-  }
-
-  constructor(o) {
-    this.port = o.port;
-    this.emitter = new Emitter();
-    this.server = net.createServer(s => this.handleSocket(s));
   }
 
   handleSocket(socket) {

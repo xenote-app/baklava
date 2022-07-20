@@ -16,6 +16,7 @@
     "commander": "^3.0.2",
     "cors": "^2.8.5",
     "express": "^4.18.1",
+    "express-session": "^1.17.3",
     "glob": "^7.2.3",
     "lodash": "^4.17.21",
     "pidusage": "^2.0.21",

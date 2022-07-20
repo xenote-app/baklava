@@ -49,7 +49,7 @@ class ProcessServer {
     p.run({
       command: command,
       env: { vaniPort: config.vaniPort },
-      subPath: docPath.join('/')
+      subPath: docPath
     });
     this.processes[p.id] = p;
     this.io.emit('event process', { process: p.json(), event: 'start' });

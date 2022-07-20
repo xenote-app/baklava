@@ -2,7 +2,7 @@ const
   express = require('express'),
   disk = require('./helpers/disk');
 
-class FileSyncServer {
+class DiskServer {
   constructor() {
     const router = this.router = express.Router();
 
@@ -54,4 +54,4 @@ class FileSyncServer {
   }
 }
 
-module.exports = FileSyncServer;
+module.exports = DiskServer;
