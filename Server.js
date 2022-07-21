@@ -1,4 +1,5 @@
 const
+  path = require('path'),
   express = require('express'),
   cors = require('cors'),
   bodyParser = require('body-parser'),
@@ -37,6 +38,7 @@ class Server {
     app.use(bodyParser.json());
     app.use('/disk', diskServer.router);
     app.use('/auth', authServer.router);
+    app.use(express.static(path.join(__dirname, 'static')));
     app.use('*', (req, res) => res.status(404).send('404 not found'));
 
     // Socket Server: processes

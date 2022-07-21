@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Baklava Admin</title>
+  <link rel="stylesheet" type="text/css" href="./normalize.css">
+  <link rel="stylesheet" type="text/css" href="./skeleton.css">
+
+  <style type="text/css">
+    .hidden { display: none; }
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .container { max-width: 800px; padding: 40px 0; }
+    .pull-right { float: right;  }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2 class="text-center">Balkava Admin</h2>
+    <hr />
+    <div id="loading" class="hidden">
+      loading...
+    </div>
+
+    <div id="login" class="hidden">
+      <form id="login-form">
+        <div class="row">
+          <div class="offset-by-three six columns">
+            <label>Username</label>
+            <input class="u-full-width" type="text" name="username" />
+            <label>Password</label>
+            <input class="u-full-width" type="password" name="password" />
+            <button class="button-primary pull-right" type="submit">
+              Login
+            </button>
+          </div>
+        </div>
+
+
+      </form>
+    </div>
+
+    <div id="users" class="hidden">
+      <p class="text-right">
+        Logged in as: <strong>admin</strong>
+      </p>
+      <h4>Users</h4>
+      <table class="u-full-width">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="users-list">
+        </tbody>
+      </table>
+      <div class="text-right">
+        <button type="button" onclick="showScreen('add-user')">Add User</button>
+        <button type="button" onclick="logout()">Logout</button>
+      </div>
+    </div>
+
+    <div id="add-user" class="hidden">
+      <div class="row">
+        <div class="offset-by-three six columns">
+          <h4>Add a New User</h4>
+
+          <form id="add-user-form">
+            <label>Username</label>
+            <input class="u-full-width" type="text" name="username" />
+            <label>Password</label>
+            <input class="u-full-width" type="password" name="password" />
+            <div class="text-right">
+              <button class="button-primary" type="submit">
+                Add User
+              </button>
+              <button class="button" type="button" onclick="refresh()">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div id="message" class="hidden">
+      <div class="text-center">
+        <div id="message-text"></div>
+        <br />
+        <button type="button" onclick="refresh()">
+          Ok
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <script type="text/javascript">
+    const screens = ['loading', 'login', 'users', 'message', 'add-user'];
+
+    function showScreen(screen) {
+      for (var s of screens) {
+        document.getElementById(s).className = s === screen ? '' : 'hidden';
+      }
+    }
+
+    const
+      messageTextEl = document.getElementById('message-text');
+
+    function showMessage(text) {
+      messageTextEl.textContent =  text;
+      showScreen('message');      
+    }
+    
+    function refresh() {
+      showScreen('loading');
+      fetch('/auth/whoami')
+        .then(response => {
+          if (response.status !== 200)
+            return showScreen('login');
+
+          var username
+          response.json()
+            .then(j => { username = j.username })
+            .then(_ => fetch('/auth/users'))
+            .then(response => response.json())
+            .then(r => {
+              popupateUsers(r, username);
+              showScreen('users');
+            })
+        });
+    }
+
+    const usersListEl = document.getElementById('users-list');
+    function popupateUsers(r, self) {
+      usersListEl.innerHTML = r.map(username => {
+        return (`
+          <tr>
+            <td class="username">${username}</td>            
+            <td class="text-right">
+              ${username !== self ? `<a href="#" onclick="deleteUser('${username}')">Delete</a>` : ''}
+              &nbsp;&nbsp;
+              <a href="#" onclick="changePassword('${username}')">Change Password</a>
+            </td>
+          </tr>
+        `)
+      }).join('')
+    }
+
+    // On L
+    const loginForm = document.getElementById('login-form');
+    loginForm.addEventListener('submit', e => { e.preventDefault(); login(e); });
+
+    function login() {
+      const
+        data = new FormData(loginForm),
+        username = data.get('username'),
+        password = data.get('password');
+
+      fetch(`/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ username, password }),
+      }).then(response => {
+        if (response.status === 401) {
+          showMessage('The password you\'ve provided is incorrect.');
+        } else if (response.status !== 204) {
+          showMessage('Cannot complete your login request.');
+        } else {
+          refresh();
+        }
+      })
+    }
+
+    const addUserForm = document.getElementById('add-user-form');
+    addUserForm.addEventListener('submit', e => { e.preventDefault(); addUser(e); });
+    function addUser() {
+      const
+        data = new FormData(addUserForm),
+        username = data.get('username'),
+        password = data.get('password');
+
+      fetch(`/auth/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ username, password }),
+      }).then(response => {
+        if (response.status === 401) {
+          showMessage('You are not logged in. Please login to continue.');
+        } else if (response.status !== 204) {
+          window.alert('Malformed username or password. Please check your inputs.');
+        } else {
+          refresh();
+        }
+      })
+    }
+
+    function logout() {
+      fetch(`/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      }).then(refresh);
+    }
+
+    function deleteUser(username) {
+      const yes = window.confirm('Are you sure you want to delete?');
+      if (!yes)
+        return;
+      fetch(`/auth/users/${username}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      })
+        .then(response => {
+          if (response.status !== 204)
+            showMessage('Cannot delete user: ' + username)
+          else
+            refresh();
+        })
+    }
+
+    function changePassword(username) {
+      const password = window.prompt('Enter a new password');
+      if (!password)
+        return;
+      const password2 = window.prompt('Reenter the same password');
+      if (!password2)
+        return;
+      if (password !== password2) {
+        window.alert('Error! The passwords don\'t match.');
+        return;
+      }
+
+      fetch(`/auth/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ username, password }),
+      }).then(response => {
+        if (response.status !== 204)
+          showMessage('Could not modify password for: ' + username);
+        else
+          showMessage('The password has been updated for: ' + username);
+      });
+    }
+
+    refresh();
+  </script>
+</body>
+</html>

@@ -33,8 +33,14 @@ function fetchPasswords() {
   return JSON.parse(fs.readFileSync(getPasswordsFilePath()));
 }
 
-function fetchUsers() {
+function fetchUsernames() {
 	return Object.keys(fetchPasswords());
+}
+
+function deleteUsername(username) {
+	const passwords = fetchPasswords()
+	delete passwords[username];
+	savePasswords(passwords);
 }
 
 function savePasswords(passwords) {
@@ -42,8 +48,8 @@ function savePasswords(passwords) {
 }
 
 const
-  usernameRegex = /^(?=[a-zA-Z0-9._]{4,20}$)(?!.*[_.]{2})[^_.].*[^_.]$/,
-  passwordRegex = /^[A-Za-z\d@$!%*#?&]{4,20}$/
+  usernameRegex = /^(?=[a-zA-Z0-9._]{3,20}$)(?!.*[_.]{2})[^_.].*[^_.]$/,
+  passwordRegex = /^[A-Za-z\d@$!%*#?&]{3,20}$/
 
 function setPassword({ username, password }) {
 	if (!usernameRegex.test(username) || !passwordRegex.test(password))
@@ -62,4 +68,4 @@ function checkPassword({ username, password }) {
 	return isPasswordCorrect({ salt, hash, iterations, password });
 }
 
-module.exports = { setPassword, checkPassword, passwordsFileExists, fetchUsers };
+module.exports = { setPassword, checkPassword, passwordsFileExists, fetchUsernames, deleteUsername };
