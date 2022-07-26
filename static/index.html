@@ -15,6 +15,7 @@
     .pull-right { float: right;  }
   </style>
 </head>
+
 <body>
   <div class="container">
     <h2 class="text-center">Balkava Admin</h2>
@@ -31,9 +32,18 @@
             <input class="u-full-width" type="text" name="username" />
             <label>Password</label>
             <input class="u-full-width" type="password" name="password" />
-            <button class="button-primary pull-right" type="submit">
-              Login
-            </button>
+            <div class="text-right">
+              <button class="button-primary" type="submit">
+                Login
+              </button>
+            </div>
+            <hr />
+
+            <p class="justify">
+              <strong>Forgot Password?</strong><br/>
+              Use the command shell command <code>baklava reset</code>
+              to get a reset password for your working folder.
+            </p>
           </div>
         </div>
 
