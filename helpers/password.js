@@ -52,8 +52,11 @@ const
   passwordRegex = /^[A-Za-z\d@$!%*#?&]{3,20}$/
 
 function setPassword({ username, password }) {
-	if (!usernameRegex.test(username) || !passwordRegex.test(password))
-		throw new Error('Invalid username or password.');
+	if (!usernameRegex.test(username))
+		throw new Error('Invalid username');
+
+	if (!password || !passwordRegex.test(password))
+		throw new Error('Invalid password.');
 
 	const passwords = fetchPasswords();
 	passwords[username] = hashPassword(password);

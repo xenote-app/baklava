@@ -1,5 +1,6 @@
 const
   https = require('https'),
+  http = require('http'),
   fs = require('fs'),
   path = require('path');
 
@@ -74,10 +75,13 @@ function addFile({ docId, file }) {
     return Promise.resolve();
 
   } else if (file.type === 'StoreFile') {
-    const writeStream = fs.createWriteStream(filePath);
+    const
+      writeStream = fs.createWriteStream(filePath),
+      url = file.downloadUrl,
+      protocol = url && url.startsWith('https') ? https : http;
     
     return (new Promise((resolve, reject) => {
-      https.get(file.downloadUrl, response => {
+      protocol.get(url, response => {
         response.pipe(writeStream);
         response.on('error', reject);
         response.on('end', _ => {
