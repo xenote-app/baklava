@@ -18,14 +18,14 @@ class ProcessServer {
   }
 
   handleConnection = (socket) => {
-    console.log('connected', socket.id);
+    console.log('Connected: ', socket.id);
     socket.emit('a machine', getMachineInfo());
     socket.emit('a process index', this.index());
     socket.on('q process index', _ => socket.emit('a process index', this.index()));
     socket.on('start process', opts => this.startProcess(opts));
     socket.on('kill process', id => this.killProcess(id));
-    socket.on('disconnect', _ => console.log('disconnected', socket.id));
-    socket.on('vani-message', data => this.emitter.emit('vani-message', data));
+    socket.on('disconnect', _ => console.log('Disconnected :', socket.id));
+    socket.on('vani', data => this.emitter.emit('vani message', data));
   }
 
   startProcess = (opts) => {
@@ -42,7 +42,7 @@ class ProcessServer {
     });
 
     p.on('close', d => {
-      this.io.emit('event process', { process: p.json(), event: 'end' });
+      this.io.emit('event process', { process: p.json(), event: 'close' });
       setTimeout(_ => this.clearProcess(p.id), 10000);
     });
 
@@ -61,6 +61,8 @@ class ProcessServer {
 
   handleProcessDataEvent(p, type, data) {
     this.io.emit('data process', { id: p.id, type: type, data: data});
+    if (type === 'message')
+      this.emitter.emit('process message', { id: p.id, data: data });
   }
 
   clearProcess(id) {
@@ -72,8 +74,14 @@ class ProcessServer {
     this.io.emit('remove process', id);
   }
 
-  emit(topic, data) {
-    this.io.emit(topic, data);
+  dispatchMessageToAllProcesses(message) {
+    // for (let id in this.processes) {
+    //   this.processes[id].send(message);
+    // }
+  }
+
+  dispatchMessageToVaniSocket(message) {
+    this.io.emit('vani', message);
   }
 }
 

@@ -6,8 +6,7 @@ const
 
 function getIndex(docId) {
   const filePath = path.join('./', `.index-${docId}`);
-  console.log(docId, filePath);
-
+  
   if (!fs.existsSync(filePath))
     return {};
 

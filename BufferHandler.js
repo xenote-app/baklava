@@ -1,29 +1,23 @@
 class BufferHandler {
-  raw = '';
-
-  constructor(handlerFn) {
-    this.handlerFn = handlerFn;
+  constructor(dataFn) {
+    this.dataFn = dataFn;
+    this.buffer = '';
   }
-
+  
   pump(chunk) {
-    this.raw += chunk.toString();
-    var pos;
-    while ((pos = this.raw.indexOf('\n')) >= 0) {
-      if (pos == 0) {
-        this.raw = raw.slice(1);
-        continue;
+    // Written by ChatGPT
+    let buffer = this.buffer;
+    buffer += chunk.toString('utf8');
+    const parts = buffer.split('\n');
+    this.buffer = parts.pop();
+    parts.forEach(part => {
+      try {
+        const jsonObject = JSON.parse(part);
+        this.dataFn(jsonObject);
+      } catch (err) {
+        console.error(err);
       }
-      this.processLine(pos);
-      this.raw = this.raw.slice(pos + 1);
-    }
-  }
-
-  processLine(pos) {
-    var line = this.raw.slice(0, pos);
-    if (line.length > 0) {
-      var data = JSON.parse(line);
-      this.handlerFn(data);
-    }
+    });
   }
 }
 

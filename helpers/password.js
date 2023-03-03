@@ -39,6 +39,8 @@ function fetchUsernames() {
 
 function deleteUsername(username) {
 	const passwords = fetchPasswords()
+	if (!passwords[username])
+		throw new Error(`No user with username "${username}"`)
 	delete passwords[username];
 	savePasswords(passwords);
 }
@@ -71,4 +73,4 @@ function checkPassword({ username, password }) {
 	return isPasswordCorrect({ salt, hash, iterations, password });
 }
 
-module.exports = { setPassword, checkPassword, passwordsFileExists, fetchUsernames, deleteUsername };
+module.exports = { setPassword, checkPassword, passwordsFileExists, fetchUsernames, fetchPasswords, deleteUsername };

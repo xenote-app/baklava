@@ -10,100 +10,33 @@ class VaniBroker {
   constructor({ port, processServer }) {
     this.port = port;
     this.emitter = new Emitter();
-    this.server = net.createServer(s => this.handleSocket(s));
-
-    processServer.emitter.on('vani-message', data => this.handleMessage(data));
-    this.emitter.on('vani-message', data => processServer.emit('vani-message', data));
+    this.processServer = processServer;
+    this.server = net.createServer(socket => this.handleSocketConnection(socket));
+    processServer.emitter.on('vani message', data => this.handleVaniMessage(data));
   }
 
-  directories = {};
-
-  getDirectory(channel) {
-    if (!this.directories[channel]) {
-      this.directories[channel] = {
-        servers: new Set(),
-        clients: new Set(),
-        sockets: {}
-      }
-    }
-    return this.directories[channel];
-  }
-
-  register({ socket, channel, type, resolveId }) {
-    const { servers, clients, sockets } = this.getDirectory(channel);
-
-    socket.channel = channel;
-    socket.id = Math.random();
-    socket.type = type;
-    sockets[socket.id] = socket;
-
-    if (type === 'server')
-      servers.add(socket.id);
-    else
-      clients.add(socket.id);
-
-    dispatch(socket, { resolveId });
-  }
-
-  handleMessage(request) {
-    const
-      { to, recepientId, senderId, channel } = request,
-      { servers, sockets } = this.getDirectory(channel);
-
-    if (to === 'server') {
-      servers.forEach(id => dispatch(sockets[id], request));
-    } else if (to === 'recepient') {
-      if (sockets[recepientId])
-        dispatch(sockets[recepientId], request);
-    } else {
-      for (var id in sockets) {
-        if (id !== senderId)
-          dispatch(sockets[id], request);
-      }
-    }
-  }
-
-  unregister(socket) {
-    const { servers, clients, sockets } = this.getDirectory(socket.channel);
-    servers.delete(socket.id);
-    clients.delete(socket.id);
-    delete sockets[socket.id];
-  }
-
-  handleSocketEnd = (socket) => {
-    this.unregister(socket);
-  }
-
-  handleSocket(socket) {
-    const bufferHandler = new BufferHandler(request => {
-      if (request.topic === 'register') {
-        this.register({
-          socket: socket,
-          channel: request.channel,
-          type: request.type,
-          resolveId: request.resolveId
-        });
-      } else if (request.topic === 'message') {
-        const data = Object.assign({}, request, {
-          senderId: socket.id,
-          channel: socket.channel
-        });
-        this.handleMessage(data);
-        this.emitter.emit('vani-message', data);
-      } else {
-        console.error('Vani handler not found:', request.topic);
-      }
-    });
-
-    socket.on('data', chunk => bufferHandler.pump(chunk));
-    socket.on('end', _ => this.handleSocketEnd(socket));
-  }
-
-  listen(cb) {
+  listen = (cb) => {
     if (fs.existsSync(this.port))
       fs.unlinkSync(this.port);
-
     this.server.listen(this.port, cb);
+  }
+
+  handleVaniMessage = (data) => {
+    this.emitter.emit('for socket', data);
+  }
+
+  handleSocketMessage = (data) => {
+    this.emitter.emit('for socket', data);
+    this.processServer.dispatchMessageToVaniSocket(data);
+  }
+
+  handleSocketConnection = (socket) => {
+    const
+      bufferHandler = new BufferHandler(data => this.handleSocketMessage(data)),
+      send = data => socket.write(JSON.stringify(data) + '\n');
+    this.emitter.on('for socket', send);
+    socket.on('data', chunk => bufferHandler.pump(chunk));
+    socket.on('end', () => this.emitter.off('for socket', send));
   }
 }
 
