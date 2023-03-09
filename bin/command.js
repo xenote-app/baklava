@@ -91,7 +91,7 @@ function trySetPassword({ username, password }) {
 }
 
 async function askPassword(question='Password: ') {
-  const readline = require('node:readline/promises').createInterface({
+  const readline = require('readline').promises.createInterface({
     input: process.stdin,
     output: process.stdout
   });
