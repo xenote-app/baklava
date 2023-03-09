@@ -91,14 +91,13 @@ function trySetPassword({ username, password }) {
 }
 
 async function askPassword(question='Password: ') {
-  const readline = require('readline').promises.createInterface({
-    input: process.stdin,
-    output: process.stdout
-  });
-  // readline.stdoutMuted = true;
-  // readline._writeToOutput = function _writeToOutput(stringToWrite) {}
-  const password = await readline.question(question);
-  readline.close();
+  const password = await (new Promise((resolve) => {
+    const readline = require('readline').createInterface(process.stdin, process.stdout);
+    readline.question(question, (answer) => {
+      resolve(answer);
+      readline.close();
+    });
+  }));
   return password;
 }
 
