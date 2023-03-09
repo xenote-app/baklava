@@ -1,5 +1,7 @@
 const
   express = require('express'),
+  jwt = require('jsonwebtoken'),
+  config = require('./config'),
   { fetchUsernames, deleteUsername, setPassword, checkPassword } = require('./helpers/password');
 
 class AuthServer {
@@ -11,9 +13,9 @@ class AuthServer {
         const { username, password } = req.body;
         if (!checkPassword({ username, password }))
           return res.status(401).send('Wrong username and password');
-        req.session.authenticated = true;
-        req.session.username = username;
-        res.status(204).end();        
+
+        const token = jwt.sign({ username: username }, config.secret);
+        res.send({ token });
       } catch(e) {
         return res.status(401).send('Invalid arguments')        
       }

@@ -10,12 +10,7 @@ const
   config = require('./config'),
   SocketServer = require('socket.io').Server,
   session = require('express-session'),
-  sessionMiddleware = session({
-    secret: 'kat-man-do',
-    resave: false,
-    saveUninitialized: false
-  });
-
+  jwt = require('jsonwebtoken');
 
 
 corsPolicy = {
@@ -34,7 +29,6 @@ class Server {
       diskServer = new DiskServer();
     
     app.use(cors(corsPolicy));
-    app.use(sessionMiddleware);
     app.use(bodyParser.json());
     app.use('/disk', diskServer.router);
     app.use('/auth', authServer.router);
@@ -46,11 +40,10 @@ class Server {
       io = new SocketServer(httpServer, { cors: corsPolicy }),
       processServer = new ProcessServer({ io });
 
-    io.use((socket, next) => sessionMiddleware(socket.request, {}, next));
-
     io.use((socket, next) => {
-      const session = socket.request.session;
-      next(session && session.authenticated ? null : new Error('authentication error'));
+      authenticateToken(socket.handshake.query && socket.handshake.query.token)
+        .then(next)
+        .catch(err => next(new Error('Authentication error')));
     });
 
     httpServer.listen(config.serverPort, () => {
@@ -61,6 +54,11 @@ class Server {
     const vaniBroker = new VaniBroker({ port: config.vaniPort, processServer });
     vaniBroker.listen(_ => console.log('Vani running on port', config.vaniPort));
   }
+}
+
+
+async function authenticateToken(token) {
+  jwt.verify(token, config.secret);
 }
 
 module.exports = Server;
