@@ -3,7 +3,9 @@ const
   pidusage = require('pidusage'),
   Emitter = require('events').EventEmitter,
   exec = require('child_process').exec,
-  path = require('path');
+  path = require('path'),
+  kill = require('tree-kill'),
+  TC = require('./misc').TERMINAL_COLORS;
 
 class Process {
   constructor({ caller }) {
@@ -35,24 +37,20 @@ class Process {
       this.emit('stderr', data.toString());
     });
 
-    child.on('message', message => {
-      console.log('incoming');
-      console.log(message);
-      
-      this.emit('message', message);
-      if (message === 'ping') {
-        child.send('pong');
-      }
-    });
-
     child.on('close', (code) => {
       this.status = 'ended';
       this.exitCode = code;
+      console.log(`${TC.OKBLUE}Process ended:${TC.ENDC}`, this.pid)
       this.emit('close', code);
     });
 
     this.status = 'running';
     this.pid = this.child.pid;
+
+    console.log(`${TC.OKGREEN}Process started${TC.ENDC}`)
+    console.log(`  by: ${TC.UNDERLINE}${this.caller.docPath}${TC.ENDC}`)
+    console.log('  pid:', this.pid);
+    console.log(`  cmd: ${TC.BOLD}${command}${TC.ENDC}`);
   }
 
   json() {
@@ -94,8 +92,10 @@ class Process {
   }
 
   stop() {
-    if (this.status === 'running')
-      this.child.kill();
+    if (this.status === 'running') {
+      console.log(`${TC.WARNING}Killing:${TC.ENDC}`, this.pid);
+      kill(this.pid);
+    }
   }
 
   destroy() {

@@ -31,7 +31,7 @@ class ProcessServer {
   startProcess = (opts) => {
     const
       { command, elementId, docId, docPath, isCommon, appId  } = opts,
-      p = new Process({ caller: { elementId, docId, isCommon, appId } });
+      p = new Process({ caller: { elementId, docId, isCommon, appId, docPath } });
 
     p.on('stdout', d => this.handleProcessDataEvent(p, 'stdout', d));
     p.on('stderr', d => this.handleProcessDataEvent(p, 'stderr', d));

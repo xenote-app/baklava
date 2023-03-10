@@ -2,7 +2,8 @@ const
   https = require('https'),
   http = require('http'),
   fs = require('fs'),
-  path = require('path');
+  path = require('path'),
+  TC = require('../misc').TERMINAL_COLORS;
 
 function getIndex(docId) {
   const filePath = path.join('./', `.index-${docId}`);
@@ -59,14 +60,12 @@ function initialize({ docId, docPath }) {
 
 
 function addFile({ docId, file }) {
-  const index = getIndex(docId);
-
-  console.log('docId', docId);
-  console.log('saving file', file.filename, 'version', file.version);
-
   const
+    index = getIndex(docId),
     folderPath = index.docPath,
     filePath = path.join('./', folderPath, file.filename);
+
+  console.log(`Saving file: "${filePath}" version ${file.version}`);
 
   if (file.type === 'DocFile') {
     fs.writeFileSync(filePath, file.content);

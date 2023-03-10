@@ -53,6 +53,7 @@ class Server {
     // Vani Broker: messaging
     const vaniBroker = new VaniBroker({ port: config.vaniPort, processServer });
     vaniBroker.listen(_ => console.log('Vani running on port', config.vaniPort));
+    console.clear();
   }
 }
 
