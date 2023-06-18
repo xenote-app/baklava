@@ -3,22 +3,53 @@
 const
   program = require('commander'),
   Server = require('../Server'),
-  { passwordsFileExists, fetchPasswords, setPassword, deleteUsername } = require('../helpers/password');
+  { passwordsFileExists, fetchPasswords, setPassword, deleteUsername } = require('../helpers/password'),
+  { launchDaemon, checkDaemonStatus, killDaemon, isPortTaken } = require('../daemon/fns');
 
 
 program.version('0.1');
 
+function checkInitialized() {
+  if (!passwordsFileExists()) {
+    console.log('Baklava is not initialized for this folder.');
+    console.log('Run "baklava init" to initialize.');
+    return false;
+  }
+  return true;
+}
+
 program.command('launch')
-  .description('Launches daemon.')
+  .description('Starts baklava on this folder')
   .action(() => {
-    if (!passwordsFileExists()) {
-      console.log('Baklava is not initialized for this folder.');
-      console.log('Run "baklava init" to initialize.');
+    if (!checkInitialized())
       return;
-    }
-    const server = new Server();
-    server.start();
+    isPortTaken().then(taken => {
+      if (taken) {
+        console.log('Baklava is already running.')
+        return;
+      }
+      const server = new Server();
+      server.start();      
+    })
   });
+
+const daemon  = program.command('daemon')
+daemon.description('Daemonize baklava');
+
+daemon.command('launch')
+  .description('Launches baklava as a background process on this folder.')
+  .action(() => {
+    if (!checkInitialized()) return;
+    launchDaemon();
+  });
+
+daemon.command('status')
+  .description('Checks the status of the daemon.')
+  .action(() => { checkDaemonStatus(); });
+
+daemon.command('kill')
+  .description('Kills a daemon.')
+  .action(() => { killDaemon(); });
 
 program.command('init')
   .description('Initializes folder.')
@@ -29,15 +60,15 @@ program.command('init')
       return;
     }
 
-    const
-      username = 'admin',
-      password = await askPassword(`Password for user "${username}":`);
+  const
+    username = 'admin',
+    password = await askPassword(`Password for user "${username}":`);
 
-    trySetPassword({ username, password });
-    console.log('Initialized');
-    console.log('username:', username);
-    console.log('password:', password);
-  });
+  trySetPassword({ username, password });
+  console.log('Initialized');
+  console.log('username:', username);
+  console.log('password:', password);
+});
 
 program.command('list-users')
   .description('List all usernames')
