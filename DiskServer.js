@@ -51,6 +51,17 @@ class DiskServer {
         .then(_ => res.send('Done.'))
         .catch(e => { console.error(e); res.status(500).send(e); });
     });
+
+    // get machine file
+    router.get('/doc/:docId/files/:filename', (req, res) => {
+      const filePath = disk.getFilePath(req.params.docId, req.params.filename);
+      res.sendFile(filePath, (err) => {
+        if (err) {
+          console.error('File failed to send:', err);
+          res.status(404).send('File not found');
+        }
+      });
+    });    
   }
 }
 

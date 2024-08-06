@@ -4,7 +4,6 @@ const
   path = require('path'),
   logFilePath = 'daemon.log';
 
-
 const logStream = fs.createWriteStream(logFilePath, { flags: 'w' });
 const daemonProcess = spawn('node', [path.join(__dirname, 'launch.js')], {
   detached: true,

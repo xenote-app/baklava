@@ -59,7 +59,7 @@ function initialize({ docId, docPath }) {
 }
 
 
-function addFile({ docId, file }) {
+async function addFile({ docId, file }) {
   const
     index = getIndex(docId),
     folderPath = index.docPath,
@@ -70,7 +70,7 @@ function addFile({ docId, file }) {
   if (file.type === 'DocFile') {
     fs.writeFileSync(filePath, file.content);
     updateFileIndex(docId, file.filename, file.version);
-    return Promise.resolve();
+    return;
 
   } else if (file.type === 'StoreFile') {
     const
@@ -78,7 +78,8 @@ function addFile({ docId, file }) {
       url = file.downloadUrl,
       protocol = url && url.startsWith('https') ? https : http;
     
-    return (new Promise((resolve, reject) => {
+    console.log('Downloading and saving URL:', url);
+    await new Promise((resolve, reject) => {
       protocol.get(url, response => {
         response.pipe(writeStream);
         response.on('error', reject);
@@ -87,10 +88,11 @@ function addFile({ docId, file }) {
           resolve();
         });
       });
-    }));
-  }
+    });
+  } else {
+   throw new('Unknown type');
 
-  return Promise.reject('Unknown type');
+  }
 }
 
 function updateFileIndex(docId, filename, version) {
@@ -125,4 +127,8 @@ function deleteFile({ docId, filename }) {
   return Promise.resolve();
 }
 
-module.exports = { getIndex, setIndex, initialize, addFile, deleteFile }
+function getFilePath(docId, filename) {
+  return path.resolve(path.join('./', getIndex(docId).docPath, filename));
+}
+
+module.exports = { getIndex, setIndex, initialize, addFile, deleteFile, getFilePath }

@@ -22,7 +22,7 @@ class AuthServer {
     });
 
     router.get('/whoami', (req, res) => {
-      if (req.session.authenticated)
+      if (req.session && req.session.authenticated)
         res.status(200).send({username: req.session.username});
       else
         res.status(401).send('Unauthorized');
