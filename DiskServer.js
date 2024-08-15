@@ -1,6 +1,8 @@
 const
   express = require('express'),
-  disk = require('./helpers/disk');
+  disk = require('./helpers/disk'),
+  fs = require('fs');
+
 
 class DiskServer {
   constructor() {
@@ -55,13 +57,21 @@ class DiskServer {
     // get machine file
     router.get('/doc/:docId/files/:filename', (req, res) => {
       const filePath = disk.getFilePath(req.params.docId, req.params.filename);
-      res.sendFile(filePath, (err) => {
+      fs.access(filePath, fs.constants.F_OK, (err) => {
         if (err) {
-          console.error('File failed to send:', err);
-          res.status(404).send('File not found');
+          // File does not exist
+          console.error(`File not found: ${filePath}`);
+          return res.status(404).send('File not found');
         }
+        
+        res.sendFile(filePath, (err) => {
+          if (err) {
+            console.error(`File failed to send: ${filePath}`, err);
+            return res.status(500).send('Error sending file');
+          }
+        });
       });
-    });    
+    });
   }
 }
 

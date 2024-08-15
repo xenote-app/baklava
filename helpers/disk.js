@@ -21,17 +21,17 @@ function getIndex(docId) {
 }
 
 function getFolderContents(folderPath) {
-  const
-    all = fs.readdirSync(folderPath),
-    files = [],
-    folders = [];
+  const all = fs.readdirSync(folderPath);
   
-  all.forEach(name => {
-    const isFolder = fs.lstatSync(path.join(folderPath, name)).isDirectory();
-    if (isFolder)
-      folders.push(name);
-    else
-      files.push(name);
+  return all.map(name => {
+    const stat = fs.lstatSync(path.join(folderPath, name));
+    return ({
+      name: name,
+      isFile: stat.isFile(),
+      isDirectory: stat.isDirectory(),
+      atime: stat.atime,
+      mtime: stat.mtime
+    })
   });
   return { files, folders };
 }
@@ -46,7 +46,7 @@ function initialize({ docId, docPath }) {
   console.log(docId, docPath);
   const
     folderPath = path.join('./', docPath),
-    index = { docPath };
+    index = { docPath, files: {} };
   
   console.log('Initializing for ', docId, index);
 
