@@ -1,76 +1,60 @@
 const
   express = require('express'),
   disk = require('./helpers/disk'),
-  fs = require('fs');
+  path = require('path');
 
 
 class DiskServer {
   constructor() {
     const router = this.router = express.Router();
 
-    // index
-    router.get('/doc/:docId/index', (req, res) => {
-      res.send(disk.getIndex(req.params.docId));
-    });
-
-    // folder content
-    router.get('/doc/:docId/index/:folderPath', (req, res) => {
-      res.send(disk.getFolderContent(req.params.folderPath));
-    });
-
-    // delete
-    router.delete('/doc/:docId/index/:contentPath', (req, res) => {
-      res.send(disk.delete(req.params.contentPath));
-    });
-
-    // initialize
+    // POST initialize
     router.post('/doc/:docId/initialize', (req, res) => {
-      res.send(disk.initialize({
-        docId: req.params.docId,
-        docPath: req.body.docPath
-      }));
+      res.send(disk.initializeIndex(req.params.docId, req.body.docPath));
     });
-    
-    // post
-    router.post('/doc/:docId/files/:filename', (req, res) => {
+
+    // GET index
+    router.get('/doc/:docId/index', (req, res) => {
+      const index = disk.getIndex(req.params.docId);
+      
+      // Add CWD
+      index.cwd = path.resolve(process.cwd(), index.docPath);
+
+      // Add file exists
+      for (let filename in index.files) {
+        index.files[filename].exists = disk.checkExists(index.docPath, filename);
+      }
+      res.send(index);
+    });
+
+
+    // GET Folder or File
+    router.get('/doc/:docId/files/:subpath(*)', (req, res) => {
+      const
+        docPath = disk.getIndex(req.params.docId).docPath,
+        resPath = path.join('./', docPath, req.params.subpath),
+        type = disk.getResourceType(resPath);
+
+      if (type === 'directory')
+        res.send(disk.getFolderContents(resPath));
+      else if (type === 'file')
+        res.sendFile(path.resolve(resPath));
+      else
+        res.status(404).send('Resource not found');
+    });
+
+    // POST File
+    router.post('/doc/:docId/files/', (req, res) => {
       disk
-        .addFile({
-          docId: req.params.docId,
-          filename: req.params.filename,
-          file: req.body
-        })
+        .addFile(req.params.docId, req.body)
         .then(_ => res.send('Done.'))
         .catch(e => { console.error(e); res.status(500).send(e); })
     });
 
-    // delete
-    router.delete('/doc/:docId/files/:filename', (req, res) => {
-      disk
-        .deleteFile({
-          docId: req.params.docId,
-          filename: req.params.filename
-        })
-        .then(_ => res.send('Done.'))
-        .catch(e => { console.error(e); res.status(500).send(e); });
-    });
-
-    // get machine file
-    router.get('/doc/:docId/files/:filename', (req, res) => {
-      const filePath = disk.getFilePath(req.params.docId, req.params.filename);
-      fs.access(filePath, fs.constants.F_OK, (err) => {
-        if (err) {
-          // File does not exist
-          console.error(`File not found: ${filePath}`);
-          return res.status(404).send('File not found');
-        }
-        
-        res.sendFile(filePath, (err) => {
-          if (err) {
-            console.error(`File failed to send: ${filePath}`, err);
-            return res.status(500).send('Error sending file');
-          }
-        });
-      });
+    // DELETE File
+    router.delete('/doc/:docId/files/:filepath(*)', (req, res) => {
+      disk.deleteFile(req.params.docId, req.params.filepath);
+      res.send('Done.');
     });
   }
 }

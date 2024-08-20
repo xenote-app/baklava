@@ -5,51 +5,13 @@ const
   path = require('path'),
   TC = require('../misc').TERMINAL_COLORS;
 
-function getIndex(docId) {
-  const filePath = path.join('./', `.index-${docId}`);
-  
-  if (!fs.existsSync(filePath))
-    return {};
 
-  const
-    index = JSON.parse(fs.readFileSync(filePath)),
-    folderPath = path.join('./', index.docPath);
-
-  index.folderContents = getFolderContents(folderPath);
-
-  return index;
-}
-
-function getFolderContents(folderPath) {
-  const all = fs.readdirSync(folderPath);
-  
-  return all.map(name => {
-    const stat = fs.lstatSync(path.join(folderPath, name));
-    return ({
-      name: name,
-      isFile: stat.isFile(),
-      isDirectory: stat.isDirectory(),
-      atime: stat.atime,
-      mtime: stat.mtime
-    })
-  });
-  return { files, folders };
-}
-
-function setIndex(docId, index) {
-  const indexPath = path.join('./', `.index-${docId}`);;
-  fs.writeFileSync(indexPath, JSON.stringify(index, null, 2));
-  return index;
-}
-
-function initialize({ docId, docPath }) {
-  console.log(docId, docPath);
+function initializeIndex(docId, docPath) {
   const
     folderPath = path.join('./', docPath),
     index = { docPath, files: {} };
   
-  console.log('Initializing for ', docId, index);
-
+  console.log('Initializing index for ', docId, docPath);
   if (fs.existsSync(folderPath)) {
     fs.rmdirSync(folderPath, { recursive: true });
   }
@@ -59,41 +21,18 @@ function initialize({ docId, docPath }) {
 }
 
 
-async function addFile({ docId, file }) {
-  const
-    index = getIndex(docId),
-    folderPath = index.docPath,
-    filePath = path.join('./', folderPath, file.filename);
-
-  console.log(`Saving file: "${filePath}" version ${file.version}`);
-
-  if (file.type === 'DocFile') {
-    fs.writeFileSync(filePath, file.content);
-    updateFileIndex(docId, file.filename, file.version);
-    return;
-
-  } else if (file.type === 'StoreFile') {
-    const
-      writeStream = fs.createWriteStream(filePath),
-      url = file.downloadUrl,
-      protocol = url && url.startsWith('https') ? https : http;
-    
-    console.log('Downloading and saving URL:', url);
-    await new Promise((resolve, reject) => {
-      protocol.get(url, response => {
-        response.pipe(writeStream);
-        response.on('error', reject);
-        response.on('end', _ => {
-          updateFileIndex(docId, file.filename, file.version);
-          resolve();
-        });
-      });
-    });
-  } else {
-   throw new('Unknown type');
-
-  }
+function getIndex(docId) {
+  const filePath = path.join('./', `.index-${docId}`);
+  return (!fs.existsSync(filePath) ? {} : JSON.parse(fs.readFileSync(filePath)));
 }
+
+
+function setIndex(docId, index) {
+  const indexPath = path.join('./', `.index-${docId}`);;
+  fs.writeFileSync(indexPath, JSON.stringify(index, null, 2));
+  return index;
+}
+
 
 function updateFileIndex(docId, filename, version) {
   const
@@ -104,6 +43,7 @@ function updateFileIndex(docId, filename, version) {
   setIndex(docId, index);
 }
 
+
 function removeFileIndex(docId, filename) {
   const index = getIndex(docId);
   index.files = index.files || {};
@@ -111,24 +51,86 @@ function removeFileIndex(docId, filename) {
   setIndex(docId, index);
 }
 
-function deleteFile({ docId, filename }) {
-  const index = getIndex(docId);
 
-  console.log('docId', docId);
-  console.log('Deleting file :', filename);
+// Add if file exists
+function checkExists(docPath, filename) {
+  return !!fs.existsSync(path.join('./', docPath, filename));
+}
 
+function getResourceType(resPath) {
+  try {
+    const stats = fs.lstatSync(resPath);
+    return stats.isDirectory() ? 'directory' : stats.isFile() ? 'file' : null;
+  } catch (err) {
+    console.error('Error checking path:', err);
+  }
+  return null;
+}
+
+function getFolderContents(resPath) {
+  return (
+    fs
+      .readdirSync(resPath, { withFileTypes: true })
+      .map(file => ({ name: file.name, isDirectory: file.isDirectory() }))
+  );
+}
+
+
+async function addFile(docId, file) {
   const
+    index = getIndex(docId),
+    folderPath = index.docPath,
+    filePath = path.join('./', folderPath, file.filename),
+    dir = path.dirname(filePath);
+
+  console.log(`Saving file: "${filePath}" version ${file.version}`);
+
+  if (!fs.existsSync(dir)) {
+    console.log('Creating folder', dir);
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  if (file.type === 'text file') {
+    fs.writeFileSync(filePath, file.content);
+    updateFileIndex(docId, file.filename, file.version);
+    return;
+  } else if (file.type === 'download url') {
+    await downloadFile(filePath, file.downloadUrl)
+  } else {
+   throw new('Unknown type');
+  }
+  updateFileIndex(docId, file.filename, file.version);
+}
+
+
+function downloadFile(filePath, downloadUrl) {
+  const
+    writeStream = fs.createWriteStream(filePath),
+    protocol = downloadUrl.startsWith('https') ? https : http;
+
+  console.log('Downloading and saving URL:', downloadUrl);
+  new Promise((resolve, reject) => {
+    protocol.get(downloadUrl, response => {
+      response.pipe(writeStream);
+      response.on('error', reject);
+      response.on('end', resolve);
+    });
+  });
+}
+
+
+function deleteFile(docId, filename) {
+  const
+    index = getIndex(docId),
     folderPath = index.docPath,
     filePath = path.join('./', folderPath, filename);
   
-  fs.unlinkSync(filePath);
+  console.log('Deleting file', docId, filename);
   removeFileIndex(docId, filename);
-
-  return Promise.resolve();
+  fs.unlinkSync(filePath);
 }
 
-function getFilePath(docId, filename) {
-  return path.resolve(path.join('./', getIndex(docId).docPath, filename));
+module.exports = {
+  initializeIndex, getIndex, setIndex,
+  checkExists, getResourceType, getFolderContents, addFile, deleteFile
 }
-
-module.exports = { getIndex, setIndex, initialize, addFile, deleteFile, getFilePath }
