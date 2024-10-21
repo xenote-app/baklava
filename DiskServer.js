@@ -16,6 +16,8 @@ class DiskServer {
     // GET index
     router.get('/doc/:docId/index', (req, res) => {
       const index = disk.getIndex(req.params.docId);
+      if (!index)
+        return res.status(404).send('Index not found');
       
       // Add CWD
       index.cwd = path.resolve(process.cwd(), index.docPath);

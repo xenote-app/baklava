@@ -14,7 +14,11 @@ const
 
 
 corsPolicy = {
-  origin: 'http://localhost:3000',
+  origin: [
+    'http://localhost:3000',
+    'https://xenote-app.web.app',
+    'https://xenote.com'
+  ],
   credentials: true,
   // methods: ['GET', 'POST']
 }

@@ -23,7 +23,7 @@ function initializeIndex(docId, docPath) {
 
 function getIndex(docId) {
   const filePath = path.join('./', `.index-${docId}`);
-  return (!fs.existsSync(filePath) ? {} : JSON.parse(fs.readFileSync(filePath)));
+  return (!fs.existsSync(filePath) ? null : JSON.parse(fs.readFileSync(filePath)));
 }
 
 
@@ -90,14 +90,15 @@ async function addFile(docId, file) {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  if (file.type === 'text file') {
-    fs.writeFileSync(filePath, file.content);
+  if (file.content) {
+    const data = file.isBase64 ? Buffer.from(file.content, 'base64') : file.content;
+    fs.writeFileSync(filePath, data);
     updateFileIndex(docId, file.filename, file.version);
     return;
-  } else if (file.type === 'download url') {
-    await downloadFile(filePath, file.downloadUrl)
+  } else if (file.url) {    
+    await downloadFile(filePath, file.url);
   } else {
-   throw new('Unknown type');
+   throw new Error('Unknown type');
   }
   updateFileIndex(docId, file.filename, file.version);
 }
