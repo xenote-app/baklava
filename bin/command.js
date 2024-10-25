@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const
+  { createCerts } = require('../certs'),
   program = require('commander'),
   Server = require('../Server'),
   { passwordsFileExists, fetchPasswords, setPassword, deleteUsername } = require('../helpers/password'),
@@ -112,6 +113,10 @@ program.command('delete-user')
       console.error(e.message);
     }
   });
+
+program.command('create-certs')
+  .description('Creates SSL Certificates to allow HTTPS.')
+  .action(() => createCerts());
 
 function trySetPassword({ username, password }) {
   try {

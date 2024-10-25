@@ -19,3 +19,29 @@ With Baklava, you can effortlessly run code written in languages like Python, C,
 3. Create a `sandbox` folder somewhere
 4. Change into the sandbox folder and launch using `baklava launch`
 5. Connect using the Notebook.
+
+Note: The default port for HTTP is 3456 and HTTPS is 3444
+
+### Allowing HTTPS
+Due to browser security, you cannot to connect `xenote.com` to a port/domain that is not "localhost". To override this behavior you could do one of two things.
+
+#### Use ngrok.
+  Ngrok create a HTTPS link that is accessible throught the internet.
+  A command `ngrok http 3456` will create a https forwarding to the http port.
+  This link can be accessed via internet.
+
+#### Create Unsigned SSL
+  - Use command 'baklava create-cert', This will create an unsigned SSL Certificate.
+  - Lets say your ip is `10.10.10.10`, Navitate to `https://10.10.10.10:3444` on a new tab. You will reach the security screen.
+  - On the 'Click "Advanced" Click "Proceed to site" (Chrome) or "Accept the Risk" (Firefox)
+  - Go back to the the notebook and try to connect again.
+
+
+### Overriding "config"
+- If you want to use different port you could create a new file 
+{
+  httpPort: 3456,
+  httpsPort: 3444,
+  vaniPort: 3434,
+  certsDir: './_certs'
+}

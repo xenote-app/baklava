@@ -10,7 +10,10 @@ const
   config = require('./config'),
   SocketServer = require('socket.io').Server,
   session = require('express-session'),
-  jwt = require('jsonwebtoken');
+  jwt = require('jsonwebtoken'),
+  http = require('http'),
+  https = require('https'),
+  fs = require('fs');
 
 
 corsPolicy = {
@@ -28,9 +31,9 @@ class Server {
     // HTTP Server: auth and sync
     const
       app = express(),
-      httpServer = require('http').createServer(app),
       authServer = new AuthServer(),
-      diskServer = new DiskServer();
+      diskServer = new DiskServer(),
+      httpServer = http.createServer(app);
     
     app.use(cors(corsPolicy));
     app.use(bodyParser.json());
@@ -38,10 +41,25 @@ class Server {
     app.use('/auth', authServer.router);
     app.use(express.static(path.join(__dirname, 'static')));
     app.use('*', (req, res) => res.status(404).send('404 not found'));
+    
+    // check https server
+    var httpsServer = null;
+    const
+      keyPath = path.join(config.certsDir, 'private-key.pem'),
+      certPath = path.join(config.certsDir, 'certificate.pem');
 
+    if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
+      // console.log('SSL Certs not found for HTTPS. Run "baklava create-certs" to create new certs.');
+    } else {
+      httpsServer = https.createServer({
+        key: fs.readFileSync(keyPath),
+        cert: fs.readFileSync(certPath)
+      }, app);
+    }
+    
     // Socket Server: processes
     const
-      io = new SocketServer(httpServer, { cors: corsPolicy }),
+      io = new SocketServer({ cors: corsPolicy }),
       processServer = new ProcessServer({ io });
 
     io.use((socket, next) => {
@@ -50,14 +68,24 @@ class Server {
         .catch(err => next(new Error('Authentication error')));
     });
 
-    httpServer.listen(config.serverPort, () => {
-      console.log('Server running on port', config.serverPort)
+
+    httpServer.listen(config.httpPort, () => {
+      console.log('📡  HTTP Server running on port', config.httpPort)
     });
+    io.attach(httpServer);
+
+    if (httpsServer) {
+      httpsServer.listen(config.httpsPort, () => {
+        console.log(`📡  HTTPS Server running on port`, config.httpsPort);
+      });
+      io.attach(httpsServer);
+    }
 
     // Vani Broker: messaging
     const vaniBroker = new VaniBroker({ port: config.vaniPort, processServer });
-    vaniBroker.listen(() => console.log('Vani running on port', config.vaniPort));
-    console.clear();
+    vaniBroker.listen(() => console.log('📡  Vani running on port', config.vaniPort));
+
+    console.log('⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖')
   }
 }
 
