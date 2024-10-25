@@ -38,10 +38,10 @@ Due to browser security, you cannot to connect `xenote.com` to a port/domain tha
 
 
 ### Overriding "config"
-- If you want to use different port you could create a new file 
-{
+- If you want to use different port you could create a new file called "config.json", and override variables. The default variables are:
+`{
   httpPort: 3456,
   httpsPort: 3444,
   vaniPort: 3434,
   certsDir: './_certs'
-}
+}`
