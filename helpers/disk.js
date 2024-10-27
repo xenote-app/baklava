@@ -71,7 +71,7 @@ function getFolderContents(resPath) {
   return (
     fs
       .readdirSync(resPath, { withFileTypes: true })
-      .map(file => ({ name: file.name, isDirectory: file.isDirectory() }))
+      .map(function(file) { return ({ name: file.name, isDirectory: file.isDirectory() }); })
   );
 }
 
@@ -110,8 +110,8 @@ function downloadFile(filePath, downloadUrl) {
     protocol = downloadUrl.startsWith('https') ? https : http;
 
   console.log('Downloading and saving URL:', downloadUrl);
-  new Promise((resolve, reject) => {
-    protocol.get(downloadUrl, response => {
+  new Promise(function(resolve, reject) {
+    protocol.get(downloadUrl, function(response) {
       response.pipe(writeStream);
       response.on('error', reject);
       response.on('end', resolve);

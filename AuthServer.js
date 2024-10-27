@@ -8,7 +8,7 @@ class AuthServer {
   constructor() {
     const router = this.router = express.Router();
 
-    router.post('/login', (req, res) => {
+    router.post('/login', function(req, res) {
       try {
         const { username, password } = req.body;
         if (!checkPassword({ username, password }))
@@ -21,7 +21,7 @@ class AuthServer {
       }
     });
 
-    router.get('/whoami', (req, res) => {
+    router.get('/whoami', function(req, res) {
       if (req.session && req.session.authenticated)
         res.status(200).send({username: req.session.username});
       else
@@ -29,26 +29,26 @@ class AuthServer {
     });
 
 
-    router.post('/logout', (req, res) => {
+    router.post('/logout', function(req, res) {
       req.session.authenticated = false;
       res.status(204).end();
     });
 
-    router.get('/users', (req, res) => {
+    router.get('/users', function(req, res) {
       if (!req.session.authenticated)
         res.status(401).send('Unauthorized');
       else
         res.send(fetchUsernames());
     });
 
-    router.delete('/users/:username', (req, res) => {
+    router.delete('/users/:username', function(req, res) {
       if (!req.session.authenticated || req.session.username === req.params.username)
         return res.status(401).send('Unauthorized');
       deleteUsername(req.params.username);
       res.status(204).end();
     });
 
-    router.post('/users', (req, res) => {
+    router.post('/users', function(req, res) {
       if (!req.session.authenticated) {
         res.status(401).send('Unauthorized');
         return;

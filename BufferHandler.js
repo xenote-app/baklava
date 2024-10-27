@@ -6,14 +6,16 @@ class BufferHandler {
   
   pump(chunk) {
     // Written by ChatGPT
-    let buffer = this.buffer;
+    let
+      bufferHandler = this,
+      buffer = this.buffer;
     buffer += chunk.toString('utf8');
     const parts = buffer.split('\n');
     this.buffer = parts.pop();
-    parts.forEach(part => {
+    parts.forEach(function(part) {
       try {
         const jsonObject = JSON.parse(part);
-        this.dataFn(jsonObject);
+        bufferHandler.dataFn(jsonObject);
       } catch (err) {
         console.error(err);
       }

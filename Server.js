@@ -40,7 +40,7 @@ class Server {
     app.use('/disk', diskServer.router);
     app.use('/auth', authServer.router);
     app.use(express.static(path.join(__dirname, 'static')));
-    app.use('*', (req, res) => res.status(404).send('404 not found'));
+    app.use('*', function(req, res) { res.status(404).send('404 not found') });
     
     // check https server
     var httpsServer = null;
@@ -62,20 +62,20 @@ class Server {
       io = new SocketServer({ cors: corsPolicy }),
       processServer = new ProcessServer({ io });
 
-    io.use((socket, next) => {
+    io.use(function(socket, next) {
       authenticateToken(socket.handshake.query && socket.handshake.query.token)
         .then(next)
-        .catch(err => next(new Error('Authentication error')));
+        .catch(function(err) { next(new Error('Authentication error')); });
     });
 
 
-    httpServer.listen(config.httpPort, () => {
+    httpServer.listen(config.httpPort, function() {
       console.log('📡  HTTP Server running on port', config.httpPort)
     });
     io.attach(httpServer);
 
     if (httpsServer) {
-      httpsServer.listen(config.httpsPort, () => {
+      httpsServer.listen(config.httpsPort, function() {
         console.log(`📡  HTTPS Server running on port`, config.httpsPort);
       });
       io.attach(httpsServer);
@@ -83,9 +83,9 @@ class Server {
 
     // Vani Broker: messaging
     const vaniBroker = new VaniBroker({ port: config.vaniPort, processServer });
-    vaniBroker.listen(() => console.log('📡  Vani running on port', config.vaniPort));
+    vaniBroker.listen(function() { console.log('📡  Vani running on port', config.vaniPort); });
 
-    console.log('⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖')
+    console.log('⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖');
   }
 }
 

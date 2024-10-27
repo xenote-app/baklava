@@ -24,13 +24,13 @@ async function launchDaemon() {
 }
 
 function isPortTaken() {
-  return new Promise((resolve, reject) => {
+  return new Promise(function(resolve, reject) {
     const server = net.createServer();
-    server.listen(1823, null, () => {
+    server.listen(1823, null, function() {
       server.close();
       resolve(false);
     });
-    server.on('error', (err) => {
+    server.on('error', function(err) {
       if (err.code === 'EADDRINUSE') { resolve(true); }
       else { reject(err); }
     });
@@ -55,8 +55,8 @@ async function killDaemon() {
 
 // Get the current process id
 function savePid(pid) {
-  return new Promise((resolve, reject) => {
-    fs.writeFile(pidFilePath, pid.toString(), (err) => {
+  return new Promise(function(resolve, reject) {
+    fs.writeFile(pidFilePath, pid.toString(), function(err) {
       if (err) { reject(err); }
       else { resolve(); }
     });
@@ -64,8 +64,8 @@ function savePid(pid) {
 }
 
 function getPid() {
-  return new Promise((resolve, reject) => {
-    fs.readFile(pidFilePath, 'utf8', (err, data) => {
+  return new Promise(function(resolve, reject) {
+    fs.readFile(pidFilePath, 'utf8', function(err, data) {
       if (err) { reject(err); }
       else { resolve(parseInt(data.trim(), 10)); }
     });

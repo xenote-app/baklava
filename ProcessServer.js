@@ -13,37 +13,39 @@ class ProcessServer {
     this.io.on('connection', this.handleConnection);
   }
 
-  index = () => {
-    return _.reduce(this.processes, (r, p, k) => { r[k] = p.json(); return r; }, {});
+  index() {
+    return _.reduce(this.processes, function(r, p, k) { r[k] = p.json(); return r; }, {});
   }
 
-  handleConnection = (socket) => {
+  handleConnection(socket) {
     console.log('Connected: ', socket.id);
+    const server = this;
     socket.emit('a machine', getMachineInfo());
-    socket.emit('a process index', this.index());
-    socket.on('q process index', _ => socket.emit('a process index', this.index()));
-    socket.on('start process', opts => this.startProcess(opts));
-    socket.on('kill process', id => this.killProcess(id));
-    socket.on('disconnect', _ => console.log('Disconnected :', socket.id));
-    socket.on('vani', data => this.emitter.emit('vani message', data));
+    socket.emit('a process index', server.index());
+    socket.on('q process index', function() { return socket.emit('a process index', server.index()); });
+    socket.on('start process', function(opts) { return server.startProcess(opts); });
+    socket.on('kill process', function(id) { return server.killProcess(id) });
+    socket.on('disconnect', function() { console.log('Disconnected :', socket.id); });
+    socket.on('vani', function(data) { server.emitter.emit('vani message', data); });
   }
 
-  startProcess = (opts) => {
+  startProcess(opts) {
     const
+      server = this,
       { command, elementId, docId, docPath, isCommon, appId  } = opts,
       p = new Process({ caller: { elementId, docId, isCommon, appId, docPath } });
 
-    p.on('stdout', d => this.handleProcessDataEvent(p, 'stdout', d));
-    p.on('stderr', d => this.handleProcessDataEvent(p, 'stderr', d));
-    p.on('message', d => this.handleProcessDataEvent(p, 'message', d));
+    p.on('stdout', function(d) { server.handleProcessDataEvent(p, 'stdout', d); });
+    p.on('stderr', function(d) { server.handleProcessDataEvent(p, 'stderr', d); });
+    p.on('message', function(d) { server.handleProcessDataEvent(p, 'message', d); });
     
-    p.on('error', err => {
-      this.io.emit('event process', { process: p.json(), error: err.stack.toString(), event: 'error' })
+    p.on('error', function(err) {
+      server.io.emit('event process', { process: p.json(), error: err.stack.toString(), event: 'error' })
     });
 
-    p.on('close', d => {
-      this.io.emit('event process', { process: p.json(), event: 'close' });
-      setTimeout(_ => this.clearProcess(p.id), 10000);
+    p.on('close', function(d) {
+      server.io.emit('event process', { process: p.json(), event: 'close' });
+      setTimeout(function() { server.clearProcess(p.id) }, 10000);
     });
 
     p.run({
@@ -51,8 +53,8 @@ class ProcessServer {
       env: { vaniPort: config.vaniPort },
       subPath: docPath
     });
-    this.processes[p.id] = p;
-    this.io.emit('event process', { process: p.json(), event: 'start' });
+    server.processes[p.id] = p;
+    server.io.emit('event process', { process: p.json(), event: 'start' });
   }
 
   killProcess(id) {

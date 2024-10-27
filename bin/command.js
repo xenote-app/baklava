@@ -21,10 +21,10 @@ function checkInitialized() {
 
 program.command('launch')
   .description('Starts baklava on this folder')
-  .action(() => {
+  .action(function() {
     if (!checkInitialized())
       return;
-    isPortTaken().then(taken => {
+    isPortTaken().then(function(taken) {
       if (taken) {
         console.log('Baklava is already running.')
         return;
@@ -39,22 +39,22 @@ daemon.description('Daemonize baklava');
 
 daemon.command('launch')
   .description('Launches baklava as a background process on this folder.')
-  .action(() => {
+  .action(function() {
     if (!checkInitialized()) return;
     launchDaemon();
   });
 
 daemon.command('status')
   .description('Checks the status of the daemon.')
-  .action(() => { checkDaemonStatus(); });
+  .action(function() { checkDaemonStatus(); });
 
 daemon.command('kill')
   .description('Kills a daemon.')
-  .action(() => { killDaemon(); });
+  .action(function() { killDaemon(); });
 
 program.command('init')
   .description('Initializes folder.')
-  .action(async () => {
+  .action(async function() {
     if (passwordsFileExists()) {
       console.log('The folder is already initialized.')
       console.log('Run "baklava launch" to launch.')
@@ -73,7 +73,7 @@ program.command('init')
 
 program.command('list-users')
   .description('List all usernames')
-  .action(() => {
+  .action(function() {
     for (let username in fetchPasswords()) {
       console.log(username);
     }
@@ -82,7 +82,7 @@ program.command('list-users')
 program.command('create-user')
   .description('List all usernames')
   .argument('<username>', 'Username for which to change password of.')
-  .action(async (username) => {
+  .action(async function(username) {
     if (fetchPasswords()[username])
       return console.error('A user already exists with the username: ' + username);
 
@@ -93,7 +93,7 @@ program.command('create-user')
 program.command('set-password')
   .description('Set password for a user')
   .argument('<username>', 'Username to change password of.')
-  .action(async (username) => {
+  .action(async function(username) {
     if (!fetchPasswords()[username])
       return console.error('Cannot find user with username: ' + username);
 
@@ -104,7 +104,7 @@ program.command('set-password')
 program.command('delete-user')
   .description('Delete a user')
   .argument('<username>', 'Username to delete.')
-  .action((username) => {
+  .action(function(username) {
     try {
       deleteUsername(username);
       console.log(`User "${username}" has been removed.`);
@@ -116,7 +116,7 @@ program.command('delete-user')
 
 program.command('create-certs')
   .description('Creates SSL Certificates to allow HTTPS.')
-  .action(() => createCerts());
+  .action(createCerts);
 
 function trySetPassword({ username, password }) {
   try {
@@ -127,9 +127,9 @@ function trySetPassword({ username, password }) {
 }
 
 async function askPassword(question='Password: ') {
-  const password = await (new Promise((resolve) => {
+  const password = await (new Promise(function(resolve) {
     const readline = require('readline').createInterface(process.stdin, process.stdout);
-    readline.question(question, (answer) => {
+    readline.question(question, function(answer) {
       resolve(answer);
       readline.close();
     });

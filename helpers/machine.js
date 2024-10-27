@@ -2,9 +2,9 @@ const
   os = require('os'),
   ifaces = os.networkInterfaces();
 
-var interfaces = () => {
+function interfaces() {
   result = [];
-  Object.keys(ifaces).forEach((ifname) => {
+  Object.keys(ifaces).forEach(function(ifname) {
     ifaces[ifname].forEach(function (iface) {
       if (iface.internal !== false) return;
 
@@ -19,7 +19,7 @@ var interfaces = () => {
   return result;
 }
 
-var getMachineInfo = () => {
+function getMachineInfo() {
   return {
     'user': process.env.USER,
     'pid': process.pid,

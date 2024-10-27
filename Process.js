@@ -18,38 +18,39 @@ class Process {
     this.runOpts = opts;
 
     const
+      process = this,
       { command, env, subPath } = opts,
       _env = _.extend({}, process.env, env),
       _cwd = path.join(process.cwd(), subPath);
 
-    var child = this.child = exec(command, { cwd: _cwd, env: _env });
+    var child = process.child = exec(command, { cwd: _cwd, env: _env });
 
-    child.on('error', err => {
-      this.status = 'error';
-      this.emit('error', err);
+    child.on('error', function(err) {
+      process.status = 'error';
+      process.emit('error', err);
     })
 
-    child.stdout.on('data', (data) => {
-      this.emit('stdout', data.toString());
+    child.stdout.on('data', function(data) {
+      process.emit('stdout', data.toString());
     });
 
-    child.stderr.on('data', (data) => {
-      this.emit('stderr', data.toString());
+    child.stderr.on('data', function(data) {
+      process.emit('stderr', data.toString());
     });
 
-    child.on('close', (code) => {
-      this.status = 'ended';
-      this.exitCode = code;
-      console.log(`${TC.OKBLUE}Process ended:${TC.ENDC}`, this.pid)
-      this.emit('close', code);
+    child.on('close', function(code) {
+      process.status = 'ended';
+      process.exitCode = code;
+      console.log(`${TC.OKBLUE}Process ended:${TC.ENDC}`, process.pid)
+      process.emit('close', code);
     });
 
-    this.status = 'running';
-    this.pid = this.child.pid;
+    process.status = 'running';
+    process.pid = process.child.pid;
 
     console.log(`${TC.OKGREEN}Process started${TC.ENDC}`)
-    console.log(`  by: ${TC.UNDERLINE}${this.caller.docPath}${TC.ENDC}`)
-    console.log('  pid:', this.pid);
+    console.log(`  by: ${TC.UNDERLINE}${process.caller.docPath}${TC.ENDC}`)
+    console.log('  pid:', process.pid);
     console.log(`  cmd: ${TC.BOLD}${command}${TC.ENDC}`);
   }
 

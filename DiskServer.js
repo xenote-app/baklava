@@ -9,12 +9,12 @@ class DiskServer {
     const router = this.router = express.Router();
 
     // POST initialize
-    router.post('/doc/:docId/initialize', (req, res) => {
+    router.post('/doc/:docId/initialize', function(req, res) {
       res.send(disk.initializeIndex(req.params.docId, req.body.docPath));
     });
 
     // GET index
-    router.get('/doc/:docId/index', (req, res) => {
+    router.get('/doc/:docId/index', function(req, res) {
       const index = disk.getIndex(req.params.docId);
       if (!index)
         return res.status(404).send('Index not found');
@@ -31,7 +31,7 @@ class DiskServer {
 
 
     // GET Folder or File
-    router.get('/doc/:docId/files/:subpath(*)', (req, res) => {
+    router.get('/doc/:docId/files/:subpath(*)', function(req, res) {
       const
         docPath = disk.getIndex(req.params.docId).docPath,
         resPath = path.join('./', docPath, req.params.subpath),
@@ -46,15 +46,15 @@ class DiskServer {
     });
 
     // POST File
-    router.post('/doc/:docId/files/', (req, res) => {
+    router.post('/doc/:docId/files/', function(req, res) {
       disk
         .addFile(req.params.docId, req.body)
-        .then(_ => res.send('Done.'))
-        .catch(e => { console.error(e); res.status(500).send(e); })
+        .then(function() { res.send('Done.'); })
+        .catch(function(e) { console.error(e); res.status(500).send(e); })
     });
 
     // DELETE File
-    router.delete('/doc/:docId/files/:filepath(*)', (req, res) => {
+    router.delete('/doc/:docId/files/:filepath(*)', function(req, res) {
       disk.deleteFile(req.params.docId, req.params.filepath);
       res.send('Done.');
     });

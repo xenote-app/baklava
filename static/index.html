@@ -127,16 +127,16 @@
     function refresh() {
       showScreen('loading');
       fetch('/auth/whoami')
-        .then(response => {
+        .then(function(response) {
           if (response.status !== 200)
             return showScreen('login');
 
           var username
           response.json()
-            .then(j => { username = j.username })
-            .then(_ => fetch('/auth/users'))
-            .then(response => response.json())
-            .then(r => {
+            .then(function(j) { username = j.username; })
+            .then(function() { fetch('/auth/users'); })
+            .then(function(response) { response.json(); })
+            .then(function(r) {
               popupateUsers(r, username);
               showScreen('users');
             })
@@ -145,7 +145,7 @@
 
     const usersListEl = document.getElementById('users-list');
     function popupateUsers(r, self) {
-      usersListEl.innerHTML = r.map(username => {
+      usersListEl.innerHTML = r.map(function(username) {
         return (`
           <tr>
             <td class="username">${username}</td>            
@@ -161,7 +161,7 @@
 
     // On L
     const loginForm = document.getElementById('login-form');
-    loginForm.addEventListener('submit', e => { e.preventDefault(); login(e); });
+    loginForm.addEventListener('submit', function(e) { e.preventDefault(); login(e); });
 
     function login() {
       const
@@ -174,7 +174,7 @@
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ username, password }),
-      }).then(response => {
+      }).then(function(response) {
         if (response.status === 401) {
           showMessage('The password you\'ve provided is incorrect.');
         } else if (response.status !== 204) {
@@ -186,7 +186,7 @@
     }
 
     const addUserForm = document.getElementById('add-user-form');
-    addUserForm.addEventListener('submit', e => { e.preventDefault(); addUser(e); });
+    addUserForm.addEventListener('submit', function(e) { e.preventDefault(); addUser(e); });
     function addUser() {
       const
         data = new FormData(addUserForm),
@@ -198,7 +198,7 @@
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ username, password }),
-      }).then(response => {
+      }).then(function(response) {
         if (response.status === 401) {
           showMessage('You are not logged in. Please login to continue.');
         } else if (response.status !== 204) {
@@ -225,7 +225,7 @@
         method: 'DELETE',
         credentials: 'include'
       })
-        .then(response => {
+        .then(function(response) {
           if (response.status !== 204)
             showMessage('Cannot delete user: ' + username)
           else
@@ -250,7 +250,7 @@
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ username, password }),
-      }).then(response => {
+      }).then(function(response) {
         if (response.status !== 204)
           showMessage('Could not modify password for: ' + username);
         else
