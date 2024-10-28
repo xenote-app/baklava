@@ -10,7 +10,7 @@ class ProcessServer {
     this.processes = {}
     this.emitter = new Emitter();
     this.io = io;
-    this.io.on('connection', this.handleConnection);
+    this.io.on('connection', this.handleConnection.bind(this));
   }
 
   index() {
@@ -48,9 +48,12 @@ class ProcessServer {
       setTimeout(function() { server.clearProcess(p.id) }, 10000);
     });
 
+    // PYTHONPATH support
+    const PYTHONPATH = process.env.PYTHONPATH ? `${process.cwd()}:${process.env.PYTHONPATH}` : process.cwd();
+
     p.run({
       command: command,
-      env: { vaniPort: config.vaniPort },
+      env: { vaniPort: config.vaniPort, PYTHONPATH },
       subPath: docPath
     });
     server.processes[p.id] = p;
