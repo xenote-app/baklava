@@ -80,16 +80,8 @@ class Process {
     this.emitter.on(type, cb);
   }
 
-  stdoutPipe(stream) {
-    this.child.stdout.pipe(stream);
-  }
-
-  stderrPipe(stream) {
-    tis.child.stderr.pipe(stream);
-  }
-
-  stdinPipe(stream) {
-    this.child.stdin.pipe(stream);
+  sendStdin(message) {
+    this.child.stdin.write(message);
   }
 
   stop() {

@@ -27,6 +27,7 @@ class ProcessServer {
     socket.on('kill process', function(id) { return server.killProcess(id) });
     socket.on('disconnect', function() { console.log('Disconnected :', socket.id); });
     socket.on('vani', function(data) { server.emitter.emit('vani message', data); });
+    socket.on('m stdin', function(data) { server.handleStdinMessage(data); });
   }
 
   startProcess(opts) {
@@ -87,6 +88,14 @@ class ProcessServer {
 
   dispatchMessageToVaniSocket(message) {
     this.io.emit('vani', message);
+  }
+
+  handleStdinMessage(data) {
+    const process = this.processes[data.processId];
+    if (process) {
+      process.sendStdin(data.message);
+      this.handleProcessDataEvent(process, 'stdin', data.message);
+    }
   }
 }
 

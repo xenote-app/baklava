@@ -90,7 +90,7 @@ async function addFile(docId, file) {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  if (file.content) {
+  if (typeof file.content !== 'undefined') {
     const data = file.isBase64 ? Buffer.from(file.content, 'base64') : file.content;
     fs.writeFileSync(filePath, data);
     updateFileIndex(docId, file.filename, file.version);
