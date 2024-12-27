@@ -4,7 +4,7 @@ const
   Emitter = require('events').EventEmitter,
   BufferHandler = require('./BufferHandler.js');
 
-function dispatch(socket, obj) { socket.write(JSON.stringify(obj) + '\n') };
+// child -> socket -> bufferHandler -> broker's emitter -> 
 
 class VaniBroker {
   constructor({ port, processServer }) {
@@ -23,23 +23,47 @@ class VaniBroker {
   }
 
   handleVaniMessage(data) {
+    console.log('vani', data);
     this.emitter.emit('for socket', data);
   }
 
   handleSocketMessage(data) {
+    console.log('socket message', data);
+    // forwarding
     this.emitter.emit('for socket', data);
     this.processServer.dispatchMessageToVaniSocket(data);
   }
 
+  // Individual connection
   handleSocketConnection(socket) {
     const
       broker = this,
       bufferHandler = new BufferHandler(function(data) { broker.handleSocketMessage(data) });
-    
-    function send(data){ socket.write(JSON.stringify(data) + '\n'); };
+
+    function send(data) {
+      if (socket.writable) {
+        socket.write(JSON.stringify(data) + '\n');
+      } else {
+        console.error('Unwritable socket found.')
+      }
+    }
     this.emitter.on('for socket', send);
+
     socket.on('data', function(chunk) { bufferHandler.pump(chunk); });
-    socket.on('end', function() { broker.emitter.off('for socket', send); });
+    socket.on('end', function() {
+      // console.log('disconnected - with grace');
+      broker.emitter.off('for socket', send);
+    });
+    socket.on('error', function(err) {
+      if (err.code === 'ECONNRESET') {
+        // console.log('disconnected - without grace');
+        socket.end();
+        socket.destroy();
+        broker.emitter.off('for socket', send);
+      } else {
+        console.error('Socket Error', error);
+      }
+    });
   }
 }
 
