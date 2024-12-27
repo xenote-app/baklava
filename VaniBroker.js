@@ -4,7 +4,7 @@ const
   Emitter = require('events').EventEmitter,
   BufferHandler = require('./BufferHandler.js');
 
-// child -> socket -> bufferHandler -> broker's emitter -> 
+// child -> socket -> bufferHandler -> broker's emitter -> vani -> * 
 
 class VaniBroker {
   constructor({ port, processServer }) {
@@ -23,13 +23,10 @@ class VaniBroker {
   }
 
   handleVaniMessage(data) {
-    console.log('vani', data);
     this.emitter.emit('for socket', data);
   }
 
   handleSocketMessage(data) {
-    console.log('socket message', data);
-    // forwarding
     this.emitter.emit('for socket', data);
     this.processServer.dispatchMessageToVaniSocket(data);
   }
