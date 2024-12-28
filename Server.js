@@ -1,19 +1,22 @@
 const
   path = require('path'),
+  fs = require('fs'),
   express = require('express'),
   cors = require('cors'),
-  bodyParser = require('body-parser'),
-  AuthServer = require('./AuthServer'),
-  DiskServer = require('./DiskServer'),
-  ProcessServer = require('./ProcessServer'),
-  VaniBroker = require('./VaniBroker'),
-  config = require('./config'),
   SocketServer = require('socket.io').Server,
   session = require('express-session'),
   jwt = require('jsonwebtoken'),
   http = require('http'),
   https = require('https'),
-  fs = require('fs');
+  bodyParser = require('body-parser'),
+
+  AuthServer = require('./AuthServer'),
+  DiskServer = require('./DiskServer'),
+  
+  ProcessManager = require('./ProcessManager'),
+  WebSocketManager = require('./WebSocketManager'),
+  VaniManager = require('./VaniManager'),
+  config = require('./config');
 
 
 corsPolicy = {
@@ -56,11 +59,15 @@ class Server {
         cert: fs.readFileSync(certPath)
       }, app);
     }
+
     
-    // Socket Server: processes
+    // Process Manager
+    const processManager = new ProcessManager();
+
+    // Web Socket Server Manager
     const
       io = new SocketServer({ cors: corsPolicy }),
-      processServer = new ProcessServer({ io });
+      webSocketManager = new WebSocketManager({ io, processManager });
 
     io.use(function(socket, next) {
       authenticateToken(socket.handshake.query && socket.handshake.query.token)
@@ -68,22 +75,21 @@ class Server {
         .catch(function(err) { next(new Error('Authentication error')); });
     });
 
-
     httpServer.listen(config.httpPort, function() {
       console.log('📡  HTTP Server running on port', config.httpPort)
     });
     io.attach(httpServer);
 
-    if (httpsServer) {
+    if (config.httpsPort) {
       httpsServer.listen(config.httpsPort, function() {
         console.log(`📡  HTTPS Server running on port`, config.httpsPort);
       });
       io.attach(httpsServer);
     }
 
-    // Vani Broker: messaging
-    const vaniBroker = new VaniBroker({ port: config.vaniPort, processServer });
-    vaniBroker.listen(function() { console.log('📡  Vani running on port', config.vaniPort); });
+    // Vani Manager
+    const vaniManager = new VaniManager({ port: config.vaniPort, webSocketManager, processManager });
+    vaniManager.listen(function() { console.log('📡  Vani running on port', config.vaniPort); });
 
     console.log('⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖');
   }
