@@ -14,15 +14,16 @@ With Baklava, you can effortlessly run code written in languages like Python, C,
 
 ### Install and Run
 
-1. Clone baklava `git clone https://github.com/ahamal/baklava.git`
-2. Change into the baklava folder and install `npm install -g`
-3. Create a `sandbox` folder somewhere
-4. Change into the sandbox folder and launch using `baklava launch`
-5. Connect using the Notebook.
+1. Clone baklava `git clone https://github.com/xenote-app/baklava.git`
+2. Change into the baklava folder `cd baklava`
+3. Install dependencies `npm install` and then install the app globally  `npm install -g`
+4. Create a `sandbox` folder somewhere
+5. Change into the sandbox folder and launch using `baklava launch`
+6. Connect using the Notebook.
 
 Note: The default port for HTTP is 3456 and HTTPS is 3444
 
-### Allowing HTTPS
+### Allow HTTPS
 Due to browser security, you cannot to connect `xenote.com` to a port/domain that is not "localhost". To override this behavior you could do one of two things.
 
 #### Use ngrok.
