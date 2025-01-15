@@ -14,23 +14,24 @@ With Baklava, you can effortlessly run code written in languages like Python, C,
 
 ### Install and Run
 
-1. Clone baklava `git clone https://github.com/ahamal/baklava.git`
-2. Change into the baklava folder and install `npm install -g`
-3. Create a `sandbox` folder somewhere
-4. Change into the sandbox folder and launch using `baklava launch`
-5. Connect using the Notebook.
+1. Clone baklava `git clone https://github.com/xenote-app/baklava.git`
+2. Change into the baklava folder `cd baklava`
+3. Install dependencies `npm install` and then install the app globally  `npm install -g`
+4. Create a `sandbox` folder somewhere
+5. Change into the sandbox folder and launch using `baklava launch`
+6. Connect using the Notebook.
 
 Note: The default port for HTTP is 3456 and HTTPS is 3444
 
-### Allowing HTTPS
-Due to browser security, you cannot to connect `xenote.com` to a port/domain that is not "localhost". To override this behavior you could do one of two things.
+### Allow HTTPS
+Due to browser security, you cannot to connect `xenote.com` to a port/domain that is not `localhost`. To override this behavior you could do one of two things.
 
-#### Use ngrok.
+#### 1. Use ngrok.
   Ngrok create a HTTPS link that is accessible throught the internet.
   A command `ngrok http 3456` will create a https forwarding to the http port.
   This link can be accessed via internet.
 
-#### Create Unsigned SSL
+#### 2. Create Unsigned SSL
   - Use command 'baklava create-cert', This will create an unsigned SSL Certificate.
   - Lets say your ip is `10.10.10.10`, Navitate to `https://10.10.10.10:3444` on a new tab. You will reach the security screen.
   - On the 'Click "Advanced" Click "Proceed to site" (Chrome) or "Accept the Risk" (Firefox)
