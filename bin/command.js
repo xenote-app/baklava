@@ -53,8 +53,10 @@ daemon.command('kill')
   .action(function() { killDaemon(); });
 
 program.command('init')
+  .option('-p, --password <password>', 'Set a password for the project')
+  .option('-u, --username <username>', 'Set a password for the project')
   .description('Initializes folder.')
-  .action(async function() {
+  .action(async function(options) {
     if (passwordsFileExists()) {
       console.log('The folder is already initialized.')
       console.log('Run "baklava launch" to launch.')
@@ -62,8 +64,8 @@ program.command('init')
     }
 
   const
-    username = 'admin',
-    password = await askPassword(`Password for user "${username}":`);
+    username = options.username || 'admin',
+    password = options.password || await askPassword(`Password for user "${username}":`);
 
   trySetPassword({ username, password });
   console.log('Initialized');
