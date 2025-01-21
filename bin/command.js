@@ -65,7 +65,7 @@ program.command('init')
 
   const
     username = options.username || 'admin',
-    password = options.password || await askPassword(`Password for user "${username}":`);
+    password = options.password || await askPassword(`🔑 Enter a new password for '${username}':`);
 
   trySetPassword({ username, password });
   console.log('Initialized');

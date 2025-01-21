@@ -45,22 +45,7 @@ class Server {
     app.use(express.static(path.join(__dirname, 'static')));
     app.use('*', function(req, res) { res.status(404).send('404 not found') });
     
-    // check https server
-    var httpsServer = null;
-    const
-      keyPath = path.join(config.certsDir, 'private-key.pem'),
-      certPath = path.join(config.certsDir, 'certificate.pem');
 
-    if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
-      // console.log('SSL Certs not found for HTTPS. Run "baklava create-certs" to create new certs.');
-    } else {
-      httpsServer = https.createServer({
-        key: fs.readFileSync(keyPath),
-        cert: fs.readFileSync(certPath)
-      }, app);
-    }
-
-    
     // Process Manager
     const processManager = new ProcessManager();
 
@@ -80,11 +65,24 @@ class Server {
     });
     io.attach(httpServer);
 
+    // HTTPS Suppoer
     if (config.httpsPort) {
-      httpsServer.listen(config.httpsPort, function() {
-        console.log(`📡  HTTPS Server running on port`, config.httpsPort);
-      });
-      io.attach(httpsServer);
+      const
+        keyPath = path.join(config.certsDir, 'private-key.pem'),
+        certPath = path.join(config.certsDir, 'certificate.pem');
+
+        if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
+          console.log('Run "baklava create-certs" to create SSL Certs and support HTTPS.');
+        } else {
+          const httpsServer = https.createServer({
+            key: fs.readFileSync(keyPath),
+            cert: fs.readFileSync(certPath)
+          }, app);
+          httpsServer.listen(config.httpsPort, function() {
+            console.log(`📡  HTTPS Server running on port`, config.httpsPort);
+          });
+          io.attach(httpsServer);
+        }
     }
 
     // Vani Manager

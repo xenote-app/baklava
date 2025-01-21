@@ -18,7 +18,7 @@ class ProcessMan {
   startProcess(opts) {
     const
       self = this,
-      { command, elementId, docId, docPath, isCommon, appId  } = opts,
+      { command, elementId, docId, docPath, isCommon, appId, envVariables } = opts,
       p = new Process({ caller: { elementId, docId, isCommon, appId, docPath } });
 
     p.on('stdout', function(d) { self.handleProcessDataEvent(p, 'stdout', d); });
@@ -34,12 +34,16 @@ class ProcessMan {
       setTimeout(function() { self.clearProcess(p.id) }, 10000);
     });
 
-    // PYTHONPATH support
+    // PYTHONPATH and NODE_PATH support
     const PYTHONPATH = process.env.PYTHONPATH ? `${process.cwd()}:${process.env.PYTHONPATH}` : process.cwd();
+    const NODE_PATH = process.env.NODE_PATH ? `${process.cwd()}:${process.env.NODE_PATH}` : process.cwd();
 
     p.run({
       command: command,
-      env: { vaniPort: config.vaniPort, PYTHONPATH },
+      env: Object.assign(
+        { vaniPort: config.vaniPort, PYTHONPATH, NODE_PATH },
+        envVariables || {}
+      ),
       subPath: docPath
     });
     self.processes[p.id] = p;
