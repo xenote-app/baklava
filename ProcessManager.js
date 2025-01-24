@@ -18,8 +18,9 @@ class ProcessMan {
   startProcess(opts) {
     const
       self = this,
-      { command, elementId, docId, docPath, isCommon, appId, envVariables } = opts,
+      { command, elementId, docId, docPath, isCommon, appId, env } = opts,
       p = new Process({ caller: { elementId, docId, isCommon, appId, docPath } });
+    console.log(opts);
 
     p.on('stdout', function(d) { self.handleProcessDataEvent(p, 'stdout', d); });
     p.on('stderr', function(d) { self.handleProcessDataEvent(p, 'stderr', d); });
@@ -42,7 +43,7 @@ class ProcessMan {
       command: command,
       env: Object.assign(
         { vaniPort: config.vaniPort, PYTHONPATH, NODE_PATH },
-        envVariables || {}
+        env || {}
       ),
       subPath: docPath
     });
