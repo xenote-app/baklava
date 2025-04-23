@@ -12,6 +12,7 @@ const
 
   AuthServer = require('./AuthServer'),
   DiskServer = require('./DiskServer'),
+  KernelServer = require('./kernel/Server'),
   
   ProcessManager = require('./ProcessManager'),
   WebSocketManager = require('./WebSocketManager'),
@@ -36,6 +37,7 @@ class Server {
       app = express(),
       authServer = new AuthServer(),
       diskServer = new DiskServer(),
+      kernelServer = new KernelServer(),
       httpServer = http.createServer(app);
     
     app.use(cors(corsPolicy));
@@ -64,6 +66,12 @@ class Server {
       console.log('📡  HTTP Server running on port', config.httpPort)
     });
     io.attach(httpServer);
+
+    // Kernel Socket Middleware
+    io.use(function(socket, next) {
+      kernelServer.handleSocket(socket);
+      next();
+    });
 
     // HTTPS Suppoer
     if (config.httpsPort) {
