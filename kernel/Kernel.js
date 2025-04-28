@@ -33,7 +33,48 @@ class Kernel {
       iopub: Promise.resolve()
     };
     
+    // Add execution tracking
+    this.executionOutputs = new Map(); // Map to store outputs for each execution
+    this.executionStartTimes = new Map(); // Track when executions start
+    this.executionSessions = new Map(); // Track session ID for each execution
+    this.executionCodes = new Map(); // Track code for each execution
+    
+    // Add subscriber tracking directly to kernel
+    this.subscribers = new Set(); // Set of socketIds subscribed to this kernel
+    this.status = 'idle'; // Track kernel status
+    this.activeExecutions = 0; // Track number of active executions
+    this.lastActivity = Date.now(); // Track last activity timestamp
+    
     debug(`Kernel initialized for document ${docId} with options:`, this.options);
+  }
+
+  /**
+   * Serializes the kernel state to JSON
+   * @returns {Object} JSON representation of the kernel
+   */
+  toJSON() {
+    return {
+      docId: this.docId,
+      docPath: this.docPath,
+      isDestroyed: this.isDestroyed,
+      status: this.status,
+      activeExecutions: this.activeExecutions,
+      executionQueue: this.executionQueue.map(item => item.executionId),
+      processing: this.processing,
+      currentExecutionId: this.currentExecutionId,
+      subscriberCount: this.subscribers.size,
+      lastActivity: this.lastActivity,
+      pid: this.kernelProcess ? this.kernelProcess.pid : null,
+      connected: !!this.channels,
+    };
+  }
+
+  /**
+   * Emits a kernel update event
+   * This should be called whenever the kernel state changes
+   */
+  emitKernelUpdate() {
+    this.emitter.emit('kernel_update', this.toJSON());
   }
 
   async start() {
@@ -92,12 +133,70 @@ class Kernel {
       
       debug(`Kernel startup complete for document ${this.docId}`);
       this.emitQueueUpdate(); // Emit initial queue state
+      this.emitKernelUpdate(); // Emit initial kernel state
       return this; // Return this for chaining
     } catch (error) {
       debug(`Error during kernel startup: ${error.message}`);
       this.cleanup();
       throw error;
     }
+  }
+  
+  // Subscriber management methods
+  addSubscriber(socketId) {
+    this.subscribers.add(socketId);
+    debug(`Socket ${socketId} subscribed to kernel ${this.docId} (total subscribers: ${this.subscribers.size})`);
+    
+    this.emitKernelUpdate(); // Emit update after subscriber added
+    return this.subscribers.size;
+  }
+  
+  removeSubscriber(socketId) {
+    const removed = this.subscribers.delete(socketId);
+    if (removed) {
+      debug(`Socket ${socketId} unsubscribed from kernel ${this.docId} (remaining subscribers: ${this.subscribers.size})`);
+      this.emitKernelUpdate(); // Emit update after subscriber removed
+    }
+    
+    return this.subscribers.size;
+  }
+  
+  hasSubscriber(socketId) {
+    return this.subscribers.has(socketId);
+  }
+  
+  getSubscriberCount() {
+    return this.subscribers.size;
+  }
+  
+  getSubscribers() {
+    return Array.from(this.subscribers);
+  }
+
+  async closeChannels() {
+    debug(`Closing ZMQ channels`);
+    
+    if (!this.channels) {
+      debug('No channels to close');
+      return;
+    }
+    
+    // Close each channel with proper error handling
+    for (const [name, channel] of Object.entries(this.channels)) {
+      try {
+        debug(`Closing ${name} channel`);
+        if (channel && typeof channel.close === 'function') {
+          await channel.close();
+          debug(`${name} channel closed successfully`);
+        }
+      } catch (error) {
+        debug(`Error closing ${name} channel: ${error.message}`);
+        // Continue closing other channels even if one fails
+      }
+    }
+    
+    this.channels = null;
+    debug('All channels closed');
   }
   
   async waitForConnectionFile(connectionFilePath) {
@@ -179,38 +278,61 @@ class Kernel {
     debug(`Starting IOPub message receiver`);
     const kernel = this;
     
-    // Flag to track if we're currently receiving messages
-    kernel.isReceiving = false;
+    // Use a proper lock mechanism with atomic operations
+    let isReceiving = false;
+    let shouldContinue = true;
+    let receivePromise = null;
     
     const receiveMessages = async () => {
-      if (kernel.isReceiving) {
-        // Already receiving messages, don't start another receiver
+      // Critical section - only enter if not already receiving
+      if (isReceiving || kernel.isDestroyed) {
         return;
       }
       
-      kernel.isReceiving = true;
+      // Set flag immediately to prevent race conditions
+      isReceiving = true;
       
       try {
-        // Wait for the next message with timeout
-        const receivePromise = kernel.channels.iopub.receive();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('IOPub receive timeout')), 60000) // 1-minute timeout
-        );
+        // Create a single receive promise that we can reuse
+        if (!receivePromise) {
+          receivePromise = kernel.channels.iopub.receive();
+        }
+        
+        // Set up a timeout that won't interfere with the receive operation
+        const timeoutPromise = new Promise((_, reject) => {
+          const timeout = setTimeout(() => {
+            clearTimeout(timeout); // Cleanup
+            reject(new Error('IOPub receive timeout'));
+          }, 60000); // 1-minute timeout
+        });
         
         let response;
         try {
+          // Use race to handle timeout without canceling the receive operation
           response = await Promise.race([receivePromise, timeoutPromise]);
+          
+          // Reset the promise since we got a response successfully
+          receivePromise = null;
         } catch (error) {
           if (error.message === 'IOPub receive timeout') {
             // This is just a timeout, not a real error
             debug(`IOPub receive timeout (expected during inactivity)`);
-            kernel.isReceiving = false;
-            if (!kernel.isDestroyed) {
-              setImmediate(receiveMessages);
+            isReceiving = false;
+            
+            // Schedule next receive attempt after a very short delay
+            if (!kernel.isDestroyed && shouldContinue) {
+              setTimeout(receiveMessages, 10);
             }
             return;
           }
-          // For real errors, continue to error handling
+          
+          // For EBUSY or other socket errors, reset the promise
+          if (error.code === 'EBUSY') {
+            debug(`Socket busy error in IOPub receiver: ${error.message}`);
+            receivePromise = null;
+          }
+          
+          // Rethrow for other error handling
           throw error;
         }
         
@@ -231,28 +353,79 @@ class Kernel {
               debug(`Received IOPub message: ${type}`);
             }
             
+            // Update kernel status based on message type
+            if (type === 'status') {
+              const prevStatus = kernel.status;
+              kernel.status = content.execution_state;
+              
+              if (prevStatus !== kernel.status) {
+                debug(`Kernel ${kernel.docId} status changed: ${prevStatus} -> ${kernel.status}`);
+                kernel.emitKernelUpdate(); // Emit update after status change
+              }
+              
+              // If this is a status:idle message, decrement active executions counter
+              if (content.execution_state === 'idle' && kernel.activeExecutions > 0) {
+                kernel.activeExecutions--;
+                debug(`Execution completed in kernel ${kernel.docId}, active: ${kernel.activeExecutions}`);
+                kernel.emitKernelUpdate(); // Emit update after active executions change
+              } else if (content.execution_state === 'busy') {
+                // The busy state often indicates the start of an execution
+                debug(`Kernel ${kernel.docId} is busy`);
+              }
+            }
+            
             kernel.emitter.emit('message', message);
             // Also emit specific event types
             kernel.emitter.emit(`message:${type}`, message);
             
-            // If the message is associated with an execution, emit an execution-specific event
+            // Process execution-related messages
             if (parentHeader.msg_id) {
-              kernel.emitter.emit(`execution:${parentHeader.msg_id}`, message);
+              const executionId = parentHeader.msg_id;
+              kernel.emitter.emit(`execution:${executionId}`, message);
               
-              // If this is a status:idle message after execute, we can process the next execution
+              // Track outputs for stream, display_data, execute_result, and error messages
+              if (['stream', 'display_data', 'execute_result', 'error'].includes(type)) {
+                const outputs = kernel.executionOutputs.get(executionId) || [];
+                outputs.push({
+                  type,
+                  content,
+                  timestamp: Date.now()
+                });
+                kernel.executionOutputs.set(executionId, outputs);
+              }
+              
+              // Process status:idle messages (execution completion)
               if (type === 'status' && content.execution_state === 'idle') {
-                const executionId = parentHeader.msg_id;
-                // Allow the next request to be processed
                 if (kernel.currentExecutionId === executionId) {
                   debug(`Execution ${executionId} completed, kernel is now idle`);
-                  kernel.processing = false;
-                  kernel.currentExecutionId = null;
                   
-                  // Emit an execution complete event
+                  // Calculate execution time
+                  const startTime = kernel.executionStartTimes.get(executionId) || Date.now();
+                  const executionTime = Date.now() - startTime;
+                  
+                  // Get collected outputs and session info
+                  const outputs = kernel.executionOutputs.get(executionId) || [];
+                  const sessionId = kernel.executionSessions.get(executionId);
+                  
+                  // Emit enhanced execution complete event
                   kernel.emitter.emit('execution_complete', { 
                     executionId,
-                    success: true 
+                    sessionId,
+                    success: true,
+                    executionTime,
+                    outputs,
+                    timestamp: Date.now()
                   });
+                  
+                  // Clean up tracking data to prevent memory leaks
+                  kernel.executionStartTimes.delete(executionId);
+                  kernel.executionOutputs.delete(executionId);
+                  kernel.executionSessions.delete(executionId);
+                  kernel.executionCodes.delete(executionId);
+                  
+                  // Reset execution flags
+                  kernel.processing = false;
+                  kernel.currentExecutionId = null;
                   
                   // Process next execution with a small delay to prevent race conditions
                   setTimeout(() => {
@@ -264,17 +437,39 @@ class Kernel {
                 }
               }
               
-              // Special handling for error messages
+              // Handle error messages
               if (type === 'error') {
-                debug(`Error in execution ${parentHeader.msg_id}: ${content.ename}: ${content.evalue}`);
+                // Calculate execution time for the current execution
+                let executionTime = 0;
+                if (kernel.executionStartTimes.has(executionId)) {
+                  const startTime = kernel.executionStartTimes.get(executionId);
+                  executionTime = Date.now() - startTime;
+                }
+                
+                // Get collected outputs and session info
+                const outputs = kernel.executionOutputs.get(executionId) || [];
+                const sessionId = kernel.executionSessions.get(executionId);
+                
+                debug(`Error in execution ${executionId}: ${content.ename}: ${content.evalue}`);
                 kernel.emitter.emit('execution_complete', { 
-                  executionId: parentHeader.msg_id,
+                  executionId,
+                  sessionId,
                   success: false,
-                  error: new Error(`${content.ename}: ${content.evalue}`)
+                  executionTime,
+                  outputs,
+                  timestamp: Date.now(),
+                  error: new Error(`${content.ename}: ${content.evalue}`),
+                  traceback: content.traceback
                 });
                 
                 // Check if this is for the current execution
-                if (kernel.currentExecutionId === parentHeader.msg_id) {
+                if (kernel.currentExecutionId === executionId) {
+                  // Clean up tracking data
+                  kernel.executionStartTimes.delete(executionId);
+                  kernel.executionOutputs.delete(executionId);
+                  kernel.executionSessions.delete(executionId);
+                  kernel.executionCodes.delete(executionId);
+                  
                   kernel.processing = false;
                   kernel.currentExecutionId = null;
                   
@@ -285,6 +480,7 @@ class Kernel {
                   
                   // Emit queue update
                   kernel.emitQueueUpdate();
+                  kernel.emitKernelUpdate(); // Emit update after error
                 }
               }
             }
@@ -296,24 +492,39 @@ class Kernel {
           debug(`Received invalid IOPub message format (parts: ${part.length})`);
         }
         
-        // Reset receiving flag and continue receiving if the kernel is still active
-        kernel.isReceiving = false;
-        if (!kernel.isDestroyed) {
+        // Reset the receiving flag and schedule next receive if kernel is still active
+        isReceiving = false;
+        if (!kernel.isDestroyed && shouldContinue) {
+          // Use setImmediate for better performance
           setImmediate(receiveMessages);
         }
       } catch (error) {
-        kernel.isReceiving = false;
-        if (!kernel.isDestroyed) {
+        // Reset state and try to recover
+        isReceiving = false;
+        receivePromise = null;
+        
+        if (!kernel.isDestroyed && shouldContinue) {
           debug(`Error in IOPub receiver: ${error.message}`);
           kernel.emitter.emit('error', error);
-          // Try to reconnect after a brief delay
-          setTimeout(receiveMessages, kernel.options.retryDelay);
+          
+          // Try to reconnect after a delay
+          setTimeout(() => {
+            if (!kernel.isDestroyed && shouldContinue) {
+              receiveMessages();
+            }
+          }, kernel.options.retryDelay || 1000);
         }
       }
     };
     
     // Start the receiver
     receiveMessages();
+    
+    // Add a method to stop the receiver cleanly
+    kernel.stopIOPubReceiver = () => {
+      debug(`Stopping IOPub receiver for kernel ${kernel.docId}`);
+      shouldContinue = false;
+    };
   }
 
   async processNextExecution() {
@@ -346,10 +557,24 @@ class Kernel {
       
       this.currentExecutionId = msg.header.msg_id;
       
+      // Store execution metadata for tracking
+      this.executionStartTimes.set(this.currentExecutionId, Date.now());
+      this.executionOutputs.set(this.currentExecutionId, []);
+      this.executionSessions.set(this.currentExecutionId, request.sessionId);
+      this.executionCodes.set(this.currentExecutionId, request.code);
+      
+      // Update active executions counter
+      this.activeExecutions++;
+      this.emitKernelUpdate(); // Emit update after active execution count changes
+      
       debug(`Starting execution ${this.currentExecutionId}`);
+      
+      // Emit enhanced execution_start event with all necessary information
       this.emitter.emit('execution_start', { 
         executionId: this.currentExecutionId,
-        code: request.code.slice(0, 100) + (request.code.length > 100 ? '...' : '')
+        sessionId: request.sessionId,
+        code: request.code,
+        timestamp: Date.now()
       });
       
       // Create a timeout for this execution
@@ -358,7 +583,9 @@ class Kernel {
           debug(`Execution timeout for ${msg.header.msg_id}`);
           this.emitter.emit('execution_timeout', { 
             executionId: msg.header.msg_id,
-            timeout: this.options.executeTimeout
+            sessionId: request.sessionId,
+            timeout: this.options.executeTimeout,
+            timestamp: Date.now()
           });
         }
       }, this.options.executeTimeout);
@@ -407,15 +634,30 @@ class Kernel {
         this.processing = false;
         this.currentExecutionId = null;
         
-        // Emit a timeout event
+        // Decrease active executions counter
+        if (this.activeExecutions > 0) {
+          this.activeExecutions--;
+        }
+        
+        // Emit a timeout event with the session ID
         this.emitter.emit('execution_complete', { 
           executionId: msg.header.msg_id,
+          sessionId: request.sessionId,
           success: false,
-          error: new Error('Execution timed out waiting for shell reply')
+          executionTime: Date.now() - this.executionStartTimes.get(msg.header.msg_id),
+          error: new Error('Execution timed out waiting for shell reply'),
+          timestamp: Date.now()
         });
+        
+        // Clean up tracking data
+        this.executionStartTimes.delete(msg.header.msg_id);
+        this.executionOutputs.delete(msg.header.msg_id);
+        this.executionSessions.delete(msg.header.msg_id);
+        this.executionCodes.delete(msg.header.msg_id);
         
         // Emit queue update since execution state changed
         this.emitQueueUpdate();
+        this.emitKernelUpdate(); // Emit update after timeout
         
         // Process the next execution with a delay
         setTimeout(() => {
@@ -429,16 +671,24 @@ class Kernel {
       this.processing = false;
       this.currentExecutionId = null;
       
+      // Decrease active executions counter
+      if (this.activeExecutions > 0) {
+        this.activeExecutions--;
+      }
+      
       // Emit error events
       this.emitter.emit('error', error);
       this.emitter.emit('execution_complete', { 
         executionId: request.executionId,
+        sessionId: request.sessionId,
         success: false,
-        error
+        error,
+        timestamp: Date.now()
       });
       
       // Emit queue update since execution state changed
       this.emitQueueUpdate();
+      this.emitKernelUpdate(); // Emit update after error
       
       // Try to process the next execution after a delay
       setTimeout(() => {
@@ -458,6 +708,9 @@ class Kernel {
     
     // Add the request to the queue
     this.executionQueue.push({ executionId: execId, sessionId, code });
+        
+    // Emit kernel update for queue change
+    this.emitKernelUpdate();
     
     // Emit queue update event
     this.emitQueueUpdate();
@@ -508,6 +761,10 @@ class Kernel {
     const msg_type = message.header.msg_type;
     debug(`Preparing to send message: ${msg_type} (ID: ${message.header.msg_id})`);
     
+    if (!this.channels) {
+      throw new Error('Cannot send message: channels not initialized');
+    }
+    
     const msg_list = [
       JSON.stringify(message.header),
       JSON.stringify(message.parent_header),
@@ -532,6 +789,10 @@ class Kernel {
     debug(`Using ${channelName} channel for ${msg_type}`);
     const channel = this.channels[channelName];
     
+    if (!channel) {
+      throw new Error(`Channel ${channelName} is not available`);
+    }
+    
     // Create signature
     const signature = key
       ? crypto.createHmac('sha256', key).update(msg_list.join('')).digest('hex')
@@ -541,23 +802,43 @@ class Kernel {
     // This creates a chain of promises to ensure sequential access
     let result;
     
-    this.channelLocks[channelName] = this.channelLocks[channelName].then(async () => {
-      debug(`Acquired lock for ${channelName} channel to send message ${message.header.msg_id}`);
+    // Add retry logic for EBUSY errors
+    const maxRetries = 3;
+    const retryDelay = this.options.retryDelay || 1000;
+    
+    const sendWithRetries = async (retryCount = 0) => {
       try {
-        // ZMQ identity frame (blank for now) followed by the message parts
+        debug(`Acquired lock for ${channelName} channel to send message ${message.header.msg_id}`);
+        
+        // Try to send the message
         await channel.send(['<IDS|MSG>', signature, ...msg_list]);
         debug(`Message ${message.header.msg_id} sent successfully on ${channelName} channel`);
-        result = message;
+        return message;
       } catch (error) {
+        // Handle EBUSY errors with retries
+        if (error.code === 'EBUSY' && retryCount < maxRetries) {
+          debug(`EBUSY error sending message ${message.header.msg_id}, retrying (${retryCount + 1}/${maxRetries})...`);
+          // Wait before retry
+          await new Promise(resolve => setTimeout(resolve, retryDelay * Math.pow(2, retryCount)));
+          // Recursive retry
+          return sendWithRetries(retryCount + 1);
+        }
+        
         debug(`Error sending message ${message.header.msg_id} on ${channelName} channel: ${error.message}`);
         throw error;
-      } finally {
-        debug(`Released lock for ${channelName} channel after message ${message.header.msg_id}`);
       }
-    }).catch(error => {
-      debug(`Error in channel lock for ${channelName}: ${error.message}`);
-      throw error;
-    });
+    };
+  
+    this.channelLocks[channelName] = this.channelLocks[channelName]
+      .then(() => sendWithRetries())
+      .then(r => {
+        result = r;
+        return r;
+      })
+      .catch(error => {
+        debug(`Error in channel lock for ${channelName}: ${error.message}`);
+        throw error;
+      });
     
     try {
       // Wait for the send operation to complete
@@ -579,8 +860,20 @@ class Kernel {
         this.processing = false;
         this.currentExecutionId = null;
         
+        // Reset active executions counter
+        this.activeExecutions = 0;
+        
+        // Emit execution_interrupted event for the current execution
+        if (this.currentExecutionId) {
+          this.emitter.emit('execution_interrupted', {
+            executionId: this.currentExecutionId,
+            timestamp: Date.now()
+          });
+        }
+        
         // Emit queue update since execution state changed
         this.emitQueueUpdate();
+        this.emitKernelUpdate(); // Emit update after interrupt
         
         debug(`Kernel interrupt signal sent successfully`);
         return true;
@@ -596,11 +889,21 @@ class Kernel {
   async restart() {
     debug(`Restarting kernel for document ${this.docId}`);
     
+    // Save subscribers to restore after restart
+    const subscribers = this.getSubscribers();
+    
     // Clear execution queue
     const hadItems = this.executionQueue.length > 0;
     this.executionQueue = [];
     this.processing = false;
     this.currentExecutionId = null;
+    this.activeExecutions = 0;
+    
+    // Clear tracking data
+    this.executionOutputs.clear();
+    this.executionStartTimes.clear();
+    this.executionSessions.clear();
+    this.executionCodes.clear();
     
     // Reset channel locks
     this.channelLocks = {
@@ -616,8 +919,30 @@ class Kernel {
     }
     
     try {
-      this.destroy(false); // Don't remove listeners
+      // Stop IOPub receiver
+      if (this.stopIOPubReceiver) {
+        this.stopIOPubReceiver();
+      }
+      
+      // Properly close channels
+      await this.closeChannels();
+      
+      // Kill the current process
+      if (this.kernelProcess) {
+        this.kernelProcess.kill();
+        this.kernelProcess = null;
+      }
+      
+      // Cleanup any temporary files
+      this.cleanup();
+      
+      // Start a fresh kernel
       await this.start();
+      
+      // Restore subscribers
+      this.subscribers = new Set(subscribers);
+      this.emitKernelUpdate(); // Emit update after restart
+      
       debug(`Kernel restart completed successfully`);
       return true;
     } catch (error) {
@@ -642,6 +967,16 @@ class Kernel {
     debug(`Destroying kernel for document ${this.docId}`);
     this.isDestroyed = true;
     
+    // Stop IOPub receiver cleanly if it exists
+    if (this.stopIOPubReceiver) {
+      this.stopIOPubReceiver();
+    }
+    
+    // Properly close ZMQ channels
+    this.closeChannels().catch(error => {
+      debug(`Error while closing channels: ${error.message}`);
+    });
+    
     if (this.kernelProcess) {
       try {
         this.kernelProcess.kill();
@@ -659,6 +994,15 @@ class Kernel {
       this.messageProcessor = null;
       debug(`Message processor stopped`);
     }
+    
+    // Clear tracking data
+    this.executionOutputs.clear();
+    this.executionStartTimes.clear();
+    this.executionSessions.clear();
+    this.executionCodes.clear();
+    
+    // Clear subscribers
+    this.subscribers.clear();
     
     if (removeListeners) {
       this.emitter.removeAllListeners();
@@ -681,7 +1025,10 @@ class Kernel {
       queueLength: this.executionQueue.length,
       isConnected: !!this.channels,
       hasProcess: !!this.kernelProcess,
-      pid: this.kernelProcess ? this.kernelProcess.pid : null
+      pid: this.kernelProcess ? this.kernelProcess.pid : null,
+      activeExecutions: this.activeExecutions,
+      subscriberCount: this.subscribers.size,
+      status: this.status
     };
   }
   
@@ -697,6 +1044,10 @@ class Kernel {
         codePreview: item.code.slice(0, 50) + (item.code.length > 50 ? '...' : '')
       }))
     };
+  }
+  
+  getExecutionOutputs(executionId) {
+    return this.executionOutputs.get(executionId) || [];
   }
 }
 

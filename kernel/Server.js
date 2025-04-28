@@ -1,11 +1,11 @@
-const Kernel = require('./kernel');
+const Kernel = require('./Kernel');
 const debug = require('debug')('jupyter:server');
 
 class Server {
   constructor(options = {}) {
     this.sockets = new Map();
     this.kernels = new Map();
-    this.executionLocks = new Map(); // New map to track execution locks per document
+    this.executionLocks = new Map(); // Map to track execution locks per document
     this.options = {
       verbose: options.verbose || false,
       logMessageTypes: options.logMessageTypes || ['status', 'error'],
@@ -66,18 +66,66 @@ class Server {
 
         else if (topic === 'start') {
           debug(`Starting kernel for document ${docId} at path ${docPath}`);
-          await server.startKernel({ docId, docPath, socketId });
+          const kernel = await server.startKernel({ docId, docPath, socketId });
+          
+          // Initial socket becomes a subscriber automatically
+          kernel.addSubscriber(socketId);
+          
           server.emitIndex();
+        }
+        
+        else if (topic === 'view_document') {
+          // Event for when a client starts viewing a document
+          debug(`Socket ${socketId} is now viewing document ${docId}`);
+          
+          // Auto-subscribe to the kernel if it exists
+          const kernel = this.kernels.get(docId);
+          if (kernel) {
+            kernel.addSubscriber(socketId);
+            
+            // Send current document state
+            socket.emit('kernel', {
+              topic: 'document_state',
+              docId,
+              kernel: kernel.toJSON()
+            });
+          }
+        }
+        
+        else if (topic === 'close_document') {
+          // Event for when a client stops viewing a document
+          debug(`Socket ${socketId} is no longer viewing document ${docId}`);
+          
+          // Auto-unsubscribe from the kernel
+          const kernel = this.kernels.get(docId);
+          if (kernel) {
+            kernel.removeSubscriber(socketId);
+          }
         }
         
         else if (topic === 'run') {
           debug(`Running code in kernel ${docId} for element ${elementId}`, { codeLength: code?.length });
+          
+          // Make sure the socket is subscribed to the kernel before running code
+          const kernel = this.kernels.get(docId);
+          if (kernel && !kernel.hasSubscriber(socketId)) {
+            kernel.addSubscriber(socketId);
+          }
+          
           if (this.options.verbose) {
             debug(`Code to execute: ${code.slice(0, 100)}${code.length > 100 ? '...' : ''}`);
           }
           
-          // Use tryRunCode with timeout and retries instead of direct runCode
+          // Use tryRunCode with timeout and retries
           await server.tryRunCode({ docId, code, elementId, socketId, retries: 3 });
+        }
+        
+        else if (topic === 'execution') {
+          debug(`Socket ${socketId} wants to subscribe to execution events for ${docId}`);
+          const kernel = this.kernels.get(docId);
+          if (kernel) {
+            kernel.addSubscriber(socketId);
+          }
         }
         
         else if (topic === 'kill') {
@@ -87,13 +135,21 @@ class Server {
         }
         
         else if (topic === 'subscribe') {
-          debug(`Socket ${socketId} subscribing to kernel ${docId}`);
-          await server.subscribeToKernel({ docId, socketId });
+          debug(`Socket ${socketId} explicitly subscribing to kernel ${docId}`);
+          const kernel = this.kernels.get(docId);
+          if (kernel) {
+            kernel.addSubscriber(socketId);
+          } else {
+            throw new Error(`No kernel running for document ${docId}`);
+          }
         }
         
         else if (topic === 'unsubscribe') {
-          debug(`Socket ${socketId} unsubscribing from kernel ${docId}`);
-          await server.unsubscribeFromKernel({ docId, socketId });
+          debug(`Socket ${socketId} explicitly unsubscribing from kernel ${docId}`);
+          const kernel = this.kernels.get(docId);
+          if (kernel) {
+            kernel.removeSubscriber(socketId);
+          }
         }
         
         else if (topic === 'kernel_status') {
@@ -123,30 +179,78 @@ class Server {
     
     socket.on('disconnect', () => {
       debug(`Socket ${socketId} disconnected`);
-      server.handleSocketDisconnect(socketId);
+      
+      // Unsubscribe from all kernels
+      for (const kernel of this.kernels.values()) {
+        if (kernel.hasSubscriber(socketId)) {
+          kernel.removeSubscriber(socketId);
+          debug(`Removed socket ${socketId} from kernel ${kernel.docId} subscribers`);
+          
+          // If no subscribers left and autoShutdown is enabled, shut down the kernel
+          if (this.options.autoShutdownUnusedKernels && kernel.getSubscriberCount() === 0) {
+            debug(`No subscribers left for kernel ${kernel.docId} and autoShutdown enabled, shutting down`);
+            this.killKernel(kernel.docId).catch(error => {
+              debug(`Error shutting down unused kernel ${kernel.docId}: ${error.message}`);
+            });
+          }
+        }
+      }
+      
+      // Remove socket from sockets map
+      this.sockets.delete(socketId);
     });
+  }
+  
+  // Function to broadcast to all subscribers of a specific kernel
+  broadcastToSubscribers(kernel, message) {
+    if (!kernel) {
+      debug(`Attempted to broadcast to non-existent kernel`);
+      return;
+    }
+    
+    const subscribers = kernel.getSubscribers();
+    if (subscribers.length === 0) {
+      debug(`No subscribers for kernel ${kernel.docId}, skipping broadcast`);
+      return;
+    }
+    
+    debug(`Broadcasting message to ${subscribers.length} subscribers of kernel ${kernel.docId}: ${message.topic}`);
+    
+    let deliveredCount = 0;
+    for (const socketId of subscribers) {
+      const socket = this.sockets.get(socketId);
+      if (socket) {
+        try {
+          socket.emit('kernel', message);
+          deliveredCount++;
+        } catch (error) {
+          debug(`Error sending message to socket ${socketId}: ${error.message}`);
+        }
+      } else {
+        debug(`Socket ${socketId} not found while broadcasting - may need cleanup`);
+        // Consider auto-cleanup of stale subscribers:
+        // kernel.removeSubscriber(socketId);
+      }
+    }
+    
+    if (deliveredCount < subscribers.length) {
+      debug(`Only delivered message to ${deliveredCount}/${subscribers.length} subscribers`);
+    }
   }
   
   emitAll(message) {
     debug(`Broadcasting message to all sockets: ${message.topic}`);
-    for (const [socketId, socket] of this.sockets.entries()) {
+    for (const socket of this.sockets.values()) {
       socket.emit('kernel', message);
     }
   }
   
   index() {
-    return Array.from(this.kernels.values()).map(kd => ({
-      docId: kd.kernel.docId,
-      docPath: kd.kernel.docPath,
-      status: kd.status || 'unknown',
-      activeExecutions: kd.activeExecutions || 0,
-      queuedExecutions: this.getQueueLength(kd.kernel)
-    }));
-  }
-  
-  getQueueLength(kernel) {
-    // Try to get queue length from kernel if the property exists
-    return kernel.executionQueue?.length || 0;
+    let r = {};
+    for (const [key, kernel] of this.kernels) {
+      r[key] = kernel.toJSON();
+    }
+    return r;
   }
   
   emitIndex() {
@@ -176,7 +280,7 @@ class Server {
       debug(`Kernel started successfully`);
       
       // Set up message handler
-      this.setupKernelMessageHandlers(kernel, docId);
+      this.setupKernelMessageHandlers(kernel);
       
       // Initialize message history for this kernel if enabled
       if (this.options.saveMessageHistory) {
@@ -187,13 +291,7 @@ class Server {
       this.executionLocks.set(docId, Promise.resolve());
       
       // Store kernel
-      this.kernels.set(docId, {
-        kernel,
-        subscribers: new Set([socketId]), // Initial subscriber is the creator
-        status: 'idle',
-        activeExecutions: 0,
-        lastActivity: Date.now()
-      });
+      this.kernels.set(docId, kernel);
       
       debug(`Kernel for ${docId} initialized and stored`);
       return kernel;
@@ -203,35 +301,28 @@ class Server {
     }
   }
   
-  setupKernelMessageHandlers(kernel, docId) {
+  setupKernelMessageHandlers(kernel) {
+    const docId = kernel.docId;
     debug(`Setting up message handlers for kernel ${docId}`);
+    
+    // Handle kernel update events
+    kernel.emitter.on('kernel_update', (kernelState) => {
+      debug(`Kernel update for ${docId}`);
+      
+      // Broadcast to all subscribers
+      this.broadcastToSubscribers(kernel, {
+        topic: 'kernel_update',
+        docId,
+        kernel: kernelState,
+        timestamp: Date.now()
+      });
+    });
     
     // Handle all kernel messages
     kernel.emitter.on('message', (message) => {
-      const kernelData = this.kernels.get(docId);
-      if (!kernelData) {
+      if (!this.kernels.has(docId)) {
         debug(`Message received for unknown kernel ${docId}`);
         return;
-      }
-      
-      // Update kernel status based on message type
-      if (message.type === 'status') {
-        const prevStatus = kernelData.status;
-        kernelData.status = message.content.execution_state;
-        kernelData.lastActivity = Date.now();
-        
-        if (prevStatus !== kernelData.status) {
-          debug(`Kernel ${docId} status changed: ${prevStatus} -> ${kernelData.status}`);
-        }
-        
-        // If this is a status:idle message, decrement active executions counter
-        if (message.content.execution_state === 'idle' && kernelData.activeExecutions > 0) {
-          kernelData.activeExecutions--;
-          debug(`Execution completed in kernel ${docId}, active: ${kernelData.activeExecutions}`);
-        } else if (message.content.execution_state === 'busy') {
-          // The busy state often indicates the start of an execution
-          debug(`Kernel ${docId} is busy`);
-        }
       }
       
       // Log selected message types or all messages if configured
@@ -257,63 +348,66 @@ class Server {
         this.messageHistory.set(docId, history);
       }
       
-      // Send to all subscribers
+      // Send to all subscribers using the broadcast method
       const elementId = message.parentHeader.msg_id;
-      
-      for (const socketId of kernelData.subscribers) {
-        const socket = this.sockets.get(socketId);
-        if (!socket) {
-          debug(`Socket ${socketId} not found`);
-          continue;
-        }
-
-        socket.emit('kernel', {
-          topic: 'data',
-          docId, 
-          elementId,
-          type: message.type,
-          content: message.content,
-        });
-      }
+      this.broadcastToSubscribers(kernel, {
+        topic: 'data',
+        docId, 
+        elementId,
+        type: message.type,
+        content: message.content,
+      });
     });
     
     // Handle queue updates
     kernel.emitter.on('queue_update', (queueStatus) => {
       debug(`Queue update for kernel ${docId}: ${queueStatus.queueLength} items, processing: ${queueStatus.processing}`);
       
-      // Notify subscribers about queue status changes
-      const kernelData = this.kernels.get(docId);
-      if (!kernelData) return;
-      
-      for (const socketId of kernelData.subscribers) {
-        const socket = this.sockets.get(socketId);
-        if (socket) {
-          socket.emit('kernel', {
-            topic: 'queue_update',
-            docId,
-            queueStatus
-          });
-        }
-      }
+      // Notify subscribers about queue status changes using broadcast
+      this.broadcastToSubscribers(kernel, {
+        topic: 'queue_update',
+        docId,
+        queueStatus
+      });
     });
     
-    // Handle shell replies
-    kernel.emitter.on('shell_reply', (message) => {
-      debug(`Received shell reply for kernel ${docId}`, message);
-    });
-    
-    // Handle specific execution events
-    kernel.emitter.on('execution_start', ({ executionId }) => {
+    // Handle execution start events
+    kernel.emitter.on('execution_start', ({ executionId, code, timestamp, sessionId }) => {
       debug(`Execution started in kernel ${docId}: ${executionId}`);
-      const kernelData = this.kernels.get(docId);
-      if (kernelData) {
-        kernelData.activeExecutions++;
-        kernelData.lastActivity = Date.now();
-      }
+      
+      // Broadcast execution_start event to all subscribers
+      this.broadcastToSubscribers(kernel, {
+        topic: 'execution_start',
+        docId,
+        executionId,
+        sessionId,
+        timestamp: timestamp || Date.now(),
+        codePreview: this.options.verbose ? 
+          (code ? code.slice(0, 100) + (code.length > 100 ? '...' : '') : null) : null
+      });
     });
     
-    kernel.emitter.on('execution_complete', ({ executionId, success, error }) => {
+    // Handle execution complete events
+    kernel.emitter.on('execution_complete', ({ executionId, success, error, traceback, executionTime, outputs, sessionId }) => {
       debug(`Execution completed in kernel ${docId}: ${executionId}`, { success });
+      
+      // Broadcast execution_complete event to all subscribers
+      this.broadcastToSubscribers(kernel, {
+        topic: 'execution_complete',
+        docId,
+        executionId,
+        sessionId,
+        success,
+        timestamp: Date.now(),
+        executionTime,
+        outputs,
+        error: error ? {
+          message: error.message,
+          stack: this.options.verbose ? error.stack : undefined,
+          traceback
+        } : null
+      });
+      
       if (error) {
         debug(`Execution error: ${error.message}`);
       }
@@ -322,6 +416,15 @@ class Server {
     // Handle execution timeouts
     kernel.emitter.on('execution_timeout', ({ executionId, timeout }) => {
       debug(`Execution timeout in kernel ${docId}: ${executionId} (${timeout}ms)`);
+      
+      // Broadcast execution timeout event
+      this.broadcastToSubscribers(kernel, {
+        topic: 'execution_timeout',
+        docId,
+        executionId,
+        timeout,
+        message: `Execution may be stuck (timeout after ${timeout}ms)`
+      });
       
       // Optionally auto-interrupt the kernel on timeout
       if (this.options.autoInterruptOnTimeout) {
@@ -336,33 +439,17 @@ class Server {
     kernel.emitter.on('error', (error) => {
       console.error(`Kernel error for document ${docId}:`, error);
       
-      const kernelData = this.kernels.get(docId);
-      if (!kernelData) return;
-      
-      // Update status
-      kernelData.status = 'error';
-      kernelData.lastError = {
-        timestamp: Date.now(),
-        message: error.message,
-        stack: error.stack
-      };
-      
-      // Notify all subscribers
-      for (const socketId of kernelData.subscribers) {
-        const socket = this.sockets.get(socketId);
-        if (socket) {
-          socket.emit('kernel', {
-            topic: 'error', 
-            docId, 
-            error: error.message,
-            stack: this.options.verbose ? error.stack : undefined
-          });
-        }
-      }
+      // Notify all subscribers using broadcast
+      this.broadcastToSubscribers(kernel, {
+        topic: 'error', 
+        docId, 
+        error: error.message,
+        stack: this.options.verbose ? error.stack : undefined
+      });
     });
   }
   
-  // New method for handling code execution with retries
+  // Method for handling code execution with retries
   async tryRunCode({ docId, elementId, code, socketId, retries = 3 }) {
     let lastError = null;
     
@@ -416,8 +503,8 @@ class Server {
   }
   
   async runCode({ docId, elementId, code, socketId }) {
-    const kernelData = this.kernels.get(docId);
-    if (!kernelData) {
+    const kernel = this.kernels.get(docId);
+    if (!kernel) {
       debug(`Attempt to run code in non-existent kernel ${docId}`);
       throw new Error('No kernel running for this document');
     }
@@ -425,11 +512,8 @@ class Server {
     debug(`Executing code in kernel ${docId} for element ${elementId}`);
     
     try {
-      // Update state
-      kernelData.lastActivity = Date.now();
-      
       // Execute the code with proper error handling
-      const executionId = await kernelData.kernel.sendExecuteRequest({
+      const executionId = await kernel.sendExecuteRequest({
         executionId: elementId,
         sessionId: docId,
         code
@@ -457,29 +541,23 @@ class Server {
     // Skip if we don't have timeout monitoring enabled
     if (!this.options.monitorExecutions) return;
     
-    const kernelData = this.kernels.get(docId);
-    if (!kernelData) return;
+    const kernel = this.kernels.get(docId);
+    if (!kernel) return;
     
     debug(`Setting execution timeout monitor for ${executionId} in kernel ${docId} (${timeoutMs}ms)`);
     
     setTimeout(() => {
-      const kernel = kernelData.kernel;
       // Check if execution might be stuck
-      if (kernel.currentExecutionId === executionId && kernelData.status === 'busy') {
+      if (kernel.currentExecutionId === executionId && kernel.status === 'busy') {
         console.warn(`Execution ${executionId} in kernel ${docId} may be stuck (timeout after ${timeoutMs}ms)`);
         
-        // Notify clients about the execution timeout
-        for (const socketId of kernelData.subscribers) {
-          const socket = this.sockets.get(socketId);
-          if (socket) {
-            socket.emit('kernel', {
-              topic: 'execution_timeout',
-              docId,
-              executionId,
-              message: `Execution may be stuck (timeout after ${timeoutMs}ms)`
-            });
-          }
-        }
+        // Notify clients about the execution timeout using broadcast
+        this.broadcastToSubscribers(kernel, {
+          topic: 'execution_timeout',
+          docId,
+          executionId,
+          message: `Execution may be stuck (timeout after ${timeoutMs}ms)`
+        });
         
         // Optionally auto-interrupt the kernel
         if (this.options.autoInterruptOnTimeout) {
@@ -493,22 +571,12 @@ class Server {
   }
   
   async getKernelStatus(docId) {
-    const kernelData = this.kernels.get(docId);
-    if (!kernelData)
+    const kernel = this.kernels.get(docId);
+    if (!kernel)
       throw new Error('Kernel not found');
     
-    const kernel = kernelData.kernel;
-    
-    // Gather detailed status information
-    const status = {
-      status: kernelData.status || 'unknown',
-      activeExecutions: kernelData.activeExecutions || 0,
-      queuedExecutions: this.getQueueLength(kernel),
-      lastActivity: kernelData.lastActivity,
-      lastError: kernelData.lastError,
-      currentExecutionId: kernel.currentExecutionId,
-      subscriberCount: kernelData.subscribers.size
-    };
+    // Use toJSON for consistent representation
+    const status = kernel.toJSON();
     
     // Add execution history if available
     if (this.options.saveMessageHistory) {
@@ -530,35 +598,50 @@ class Server {
   }
   
   async interruptKernel(docId) {
-    const kernelData = this.kernels.get(docId);
-    if (!kernelData)
+    const kernel = this.kernels.get(docId);
+    if (!kernel)
       throw new Error('Kernel not found');
     
     debug(`Interrupting kernel ${docId}`);
-    const result = await kernelData.kernel.interrupt();
+    const result = await kernel.interrupt();
     
     if (result) {
       debug(`Kernel ${docId} interrupt successful`);
-      // Reset execution counters
-      kernelData.activeExecutions = 0;
-      kernelData.status = 'idle'; // Will be updated by next status message
+      
+      // Broadcast the interrupt success
+      this.broadcastToSubscribers(kernel, {
+        topic: 'kernel_interrupted',
+        docId,
+        timestamp: Date.now()
+      });
     } else {
       debug(`Kernel ${docId} interrupt failed`);
+      
+      // Broadcast the interrupt failure
+      this.broadcastToSubscribers(kernel, {
+        topic: 'kernel_interrupt_failed',
+        docId,
+        timestamp: Date.now()
+      });
     }
     
     return result;
   }
   
   async killKernel(docId) {
-    const kernelData = this.kernels.get(docId);
-    if (!kernelData) {
+    const kernel = this.kernels.get(docId);
+    if (!kernel) {
       debug(`Attempt to kill non-existent kernel ${docId}`);
       throw new Error('Kernel not found');
     }
     
     debug(`Destroying kernel ${docId}`);
+    
+    // Get subscribers to notify before destroying
+    const subscribers = kernel.getSubscribers();
+    
     // Destroy the kernel
-    kernelData.kernel.destroy();
+    kernel.destroy();
     
     // Remove from kernels map
     this.kernels.delete(docId);
@@ -571,12 +654,14 @@ class Server {
     // Remove execution lock
     this.executionLocks.delete(docId);
     
-    // Notify all subscribers
-    for (const socketId of kernelData.subscribers) {
+    // Notify all previous subscribers
+    for (const socketId of subscribers) {
       const socket = this.sockets.get(socketId);
       if (socket) {
         socket.emit('kernel', {
-          topic: 'kernel_terminated', docId
+          topic: 'kernel_terminated', 
+          docId,
+          timestamp: Date.now()
         });
       }
     }
@@ -585,59 +670,12 @@ class Server {
     return true;
   }
   
-  async subscribeToKernel({ docId, socketId }) {
-    const kernelData = this.kernels.get(docId);
-    if (!kernelData) {
-      debug(`Attempt to subscribe to non-existent kernel ${docId}`);
-      throw new Error('No kernel running for this document');
-    }
-    
-    // Add to subscribers
-    kernelData.subscribers.add(socketId);
-    debug(`Socket ${socketId} subscribed to kernel ${docId}`);
-  }
-  
-  async unsubscribeFromKernel({ docId, socketId }) {
-    const kernelData = this.kernels.get(docId);
-    if (!kernelData) {
-      debug(`Attempt to unsubscribe from non-existent kernel ${docId}`);
-      return false;
-    }
-    
-    // Remove from subscribers
-    kernelData.subscribers.delete(socketId);
-    debug(`Socket ${socketId} unsubscribed from kernel ${docId}`);
-  }
-  
-  handleSocketDisconnect(socketId) {
-    debug(`Handling disconnect for socket ${socketId}`);
-    
-    // Remove socket from collection
-    this.sockets.delete(socketId);
-    
-    // Unsubscribe from all kernels
-    for (const [docId, kernelData] of this.kernels.entries()) {
-      if (kernelData.subscribers.has(socketId)) {
-        kernelData.subscribers.delete(socketId);
-        debug(`Removed socket ${socketId} from kernel ${docId} subscribers`);
-      }
-      
-      // If no subscribers left and autoShutdown is enabled, shut down the kernel
-      if (this.options.autoShutdownUnusedKernels && kernelData.subscribers.size === 0) {
-        debug(`No subscribers left for kernel ${docId} and autoShutdown enabled, shutting down`);
-        this.killKernel(docId).catch(error => {
-          debug(`Error shutting down unused kernel ${docId}: ${error.message}`);
-        });
-      }
-    }
-  }
-  
   shutdownAllKernels() {
     debug(`Shutting down all kernels (count: ${this.kernels.size})`);
-    for (const [docId, kernelData] of this.kernels.entries()) {
+    for (const [docId, kernel] of this.kernels.entries()) {
       try {
         debug(`Shutting down kernel ${docId}`);
-        kernelData.kernel.destroy();
+        kernel.destroy();
       } catch (e) {
         console.error(`Error shutting down kernel ${docId}:`, e);
       }
@@ -655,16 +693,8 @@ class Server {
       kernels: {}
     };
     
-    for (const [docId, kernelData] of this.kernels.entries()) {
-      info.kernels[docId] = {
-        status: kernelData.status,
-        subscribers: kernelData.subscribers.size,
-        activeExecutions: kernelData.activeExecutions,
-        queuedExecutions: this.getQueueLength(kernelData.kernel),
-        lastActivity: kernelData.lastActivity ? new Date(kernelData.lastActivity).toISOString() : null,
-        currentExecutionId: kernelData.kernel.currentExecutionId,
-        hasExecutionLock: this.executionLocks.has(docId)
-      };
+    for (const [docId, kernel] of this.kernels.entries()) {
+      info.kernels[docId] = kernel.toJSON();
       
       if (this.options.saveMessageHistory) {
         const history = this.messageHistory.get(docId) || [];
