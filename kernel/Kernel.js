@@ -850,11 +850,115 @@ class Kernel {
     }
   }
 
+  setupProcessExitHandler() {
+    if (!this.kernelProcess) return;
+    
+    this.kernelProcess.on('exit', async (code, signal) => {
+      debug(`Kernel process exited with code ${code} and signal ${signal}`);
+      
+      if (!this.isDestroyed) {
+        // If exit code is 0 and we recently tried to interrupt, it's likely a normal shutdown
+        const recentInterrupt = Date.now() - (this.lastInterruptTime || 0) < 5000;
+        
+        if (code === 0 && recentInterrupt) {
+          debug(`Kernel process exited with code 0 after interrupt, attempting to restart`);
+          
+          // Reset execution state
+          this.processing = false;
+          this.currentExecutionId = null;
+          this.activeExecutions = 0;
+          
+          // Emit event about unexpected exit but planned recovery
+          this.emitter.emit('kernel_exited', {
+            code,
+            signal,
+            willRestart: true,
+            timestamp: Date.now()
+          });
+          
+          try {
+            // Close existing channels
+            await this.closeChannels();
+            
+            // Restart the kernel
+            const connectionFilePath = path.join(require('os').tmpdir(), `kernel-${uuid()}.json`);
+            this.connectionFilePath = connectionFilePath;
+            
+            debug(`Respawning Jupyter kernel process`);
+            this.kernelProcess = spawn(
+              'jupyter',
+              ['kernel', '--KernelManager.connection_file=' + connectionFilePath]
+            );
+            
+            // Re-setup event handlers
+            this.setupProcessExitHandler();
+            
+            // Set up stdout/stderr handlers
+            this.kernelProcess.stdout.on('data', (data) => {
+              debug(`Kernel process stdout: ${data.toString().trim()}`);
+            });
+            
+            this.kernelProcess.stderr.on('data', (data) => {
+              debug(`Kernel process stderr: ${data.toString().trim()}`);
+            });
+            
+            // Wait for connection file
+            debug(`Waiting for connection file: ${connectionFilePath}`);
+            const connectionInfo = await this.waitForConnectionFile(connectionFilePath);
+            
+            if (!connectionInfo) {
+              throw new Error('Unable to restart kernel connection.');
+            }
+            
+            this.connectionInfo = connectionInfo;
+            
+            // Connect channels
+            await this.connectChannels();
+            this.startIOPubReceiver();
+            
+            debug(`Kernel restarted successfully after exit`);
+            this.emitKernelUpdate();
+            
+            // Emit recovery event
+            this.emitter.emit('kernel_recovered', {
+              timestamp: Date.now()
+            });
+          } catch (error) {
+            debug(`Failed to restart kernel after exit: ${error.message}`);
+            this.emitter.emit('error', new Error(`Failed to restart kernel after exit: ${error.message}`));
+          }
+        } else {
+          // Regular unexpected exit
+          this.emitter.emit('error', new Error(`Kernel process exited unexpectedly with code ${code}`));
+        }
+      }
+    });
+  }
+
+
   async interrupt() {
     if (this.kernelProcess && this.kernelProcess.pid) {
       debug(`Interrupting kernel process (PID: ${this.kernelProcess.pid})`);
       try {
-        process.kill(this.kernelProcess.pid, 'SIGINT');
+        // Use a more gentle approach with the control channel first
+        try {
+          const msg = this.createMessage(null, null, 'kernel_interrupt_request', {});
+          await this.sendKernelMessage(msg);
+          debug(`Kernel interrupt request sent via control channel`);
+          
+          // Give the kernel a moment to process the interrupt request
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Check if the kernel is still busy
+          if (this.status === 'busy') {
+            debug(`Kernel still busy after control message, sending SIGINT`);
+            process.kill(this.kernelProcess.pid, 'SIGINT');
+          }
+        } catch (controlError) {
+          debug(`Error sending interrupt via control channel: ${controlError.message}`);
+          // Fall back to SIGINT
+          process.kill(this.kernelProcess.pid, 'SIGINT');
+        }
         
         // Reset execution state
         this.processing = false;
@@ -883,6 +987,81 @@ class Kernel {
       }
     }
     debug(`Cannot interrupt kernel: no process or PID available`);
+    return false;
+  }
+
+  async interruptExecution(executionId) {
+    debug(`Interrupting specific execution ${executionId} in kernel ${this.docId}`);
+    
+    // Check if this is the current execution
+    if (this.currentExecutionId === executionId) {
+      debug(`Execution ${executionId} is currently running, sending interrupt signal`);
+      
+      // First try to send an interrupt using the control channel
+      try {
+        const msg = this.createMessage(null, null, 'kernel_interrupt_request', {});
+        await this.sendKernelMessage(msg);
+        debug(`Interrupt request sent via control channel for execution ${executionId}`);
+        
+        // Give the kernel a moment to process the interrupt
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // If still busy, try SIGINT
+        if (this.status === 'busy') {
+          debug(`Kernel still busy after control message, using SIGINT for execution ${executionId}`);
+          this.lastInterruptTime = Date.now(); // Track interrupt time
+          process.kill(this.kernelProcess.pid, 'SIGINT');
+        }
+      } catch (controlError) {
+        debug(`Error sending interrupt via control channel: ${controlError.message}`);
+        // Fall back to SIGINT
+        this.lastInterruptTime = Date.now(); // Track interrupt time
+        process.kill(this.kernelProcess.pid, 'SIGINT');
+      }
+      
+      // Reset execution state
+      this.processing = false;
+      this.currentExecutionId = null;
+      
+      // Emit execution_interrupted event
+      this.emitter.emit('execution_interrupted', {
+        executionId,
+        timestamp: Date.now()
+      });
+      
+      // Emit queue update
+      this.emitQueueUpdate();
+      this.emitKernelUpdate();
+      
+      return true;
+    } else if (this.executionQueue.some(item => item.executionId === executionId)) {
+      // If it's in the queue but not currently executing, remove it from the queue
+      debug(`Removing execution ${executionId} from queue`);
+      
+      // Save the original queue length to check if anything was removed
+      const originalLength = this.executionQueue.length;
+      
+      // Filter out the execution we want to remove
+      this.executionQueue = this.executionQueue.filter(item => item.executionId !== executionId);
+      
+      // Verify that something was actually removed
+      if (this.executionQueue.length < originalLength) {
+        // Emit execution_interrupted event
+        this.emitter.emit('execution_interrupted', {
+          executionId,
+          timestamp: Date.now(),
+          message: 'Execution canceled while queued'
+        });
+        
+        // Emit queue update
+        this.emitQueueUpdate();
+        this.emitKernelUpdate();
+        
+        return true;
+      }
+    }
+    
+    debug(`Execution ${executionId} not found, cannot interrupt`);
     return false;
   }
 

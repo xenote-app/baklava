@@ -162,6 +162,14 @@ class Server {
           debug(`Interrupting kernel ${docId}`);
           await server.interruptKernel(docId);
         }
+
+        else if (topic === 'interrupt_execution') {
+          debug(`Interrupting execution ${message.executionId} in kernel ${docId}`);
+          await server.interruptExecution({ 
+            docId, 
+            executionId: message.executionId 
+          });
+        }
         
         debug(`Successfully processed '${topic}' request`);
         socket.emit('kernel', { status: 'success', requestId, requestTopic: topic });
@@ -621,6 +629,41 @@ class Server {
       this.broadcastToSubscribers(kernel, {
         topic: 'kernel_interrupt_failed',
         docId,
+        timestamp: Date.now()
+      });
+    }
+    
+    return result;
+  }
+
+  async interruptExecution({ docId, executionId }) {
+    const kernel = this.kernels.get(docId);
+    if (!kernel) {
+      debug(`Attempt to interrupt execution in non-existent kernel ${docId}`);
+      throw new Error('Kernel not found');
+    }
+    
+    debug(`Interrupting execution ${executionId} in kernel ${docId}`);
+    const result = await kernel.interruptExecution(executionId);
+    
+    if (result) {
+      debug(`Execution ${executionId} interrupt successful`);
+      
+      // Broadcast the interrupt success
+      this.broadcastToSubscribers(kernel, {
+        topic: 'execution_interrupted',
+        docId,
+        executionId,
+        timestamp: Date.now()
+      });
+    } else {
+      debug(`Execution ${executionId} interrupt failed`);
+      
+      // Broadcast the interrupt failure
+      this.broadcastToSubscribers(kernel, {
+        topic: 'execution_interrupt_failed',
+        docId,
+        executionId,
         timestamp: Date.now()
       });
     }
