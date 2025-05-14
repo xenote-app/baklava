@@ -62,7 +62,8 @@ function getResourceType(resPath) {
     const stats = fs.lstatSync(resPath);
     return stats.isDirectory() ? 'directory' : stats.isFile() ? 'file' : null;
   } catch (err) {
-    console.error('Error checking path:', err);
+    // console.error('Error checking path:', err);
+    console.error('Requested file not found:', resPath);
   }
   return null;
 }
