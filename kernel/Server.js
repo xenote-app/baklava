@@ -66,6 +66,10 @@ class Server {
           responseObj.restarted = await server.restartKernel(docId);
           server.emitIndex();
         }
+
+        else if (topic === 'dequeue') {
+          this.getKernel(docId).removeFromQueue(elementId);
+        }
         
         else if (topic === 'kernel_status') {
           responseObj.status = await server.getKernelStatus(docId)
@@ -170,29 +174,28 @@ class Server {
       });
     });
     
-    kernel.emitter.on('execution_start', ({ executionId, code, timestamp, sessionId }) => {
+    kernel.emitter.on('execution_start', ({ executionId, code, sessionId }) => {
       this.broadcastToSubscribers(kernel, {
         topic: 'execution_start',
         docId,
         executionId,
         sessionId,
-        timestamp: timestamp || Date.now()
+        timestamp: Date.now()
       });
     });
     
     kernel.emitter.on('execution_interrupted', ({ executionId, timestamp }) => {
       debug('Execution interrupted')
-      
+
       this.broadcastToSubscribers(kernel, {
         topic: 'execution_interrupted',
         docId,
         executionId,
-        timestamp: timestamp || Date.now(),
-        message: 'Execution interrupted by user'
+        timestamp: Date.now(),
       });
     });
     
-    kernel.emitter.on('execution_complete', ({ executionId, success, error, traceback, executionTime, outputs, sessionId, interruptedByUser }) => {
+    kernel.emitter.on('execution_complete', ({ executionId, success, error, traceback, executionTime, sessionId }) => {
       this.broadcastToSubscribers(kernel, {
         topic: 'execution_complete',
         docId,
@@ -201,8 +204,6 @@ class Server {
         success,
         timestamp: Date.now(),
         executionTime,
-        outputs,
-        interruptedByUser,
         error: error ? { message: error.message, stack: error.stack, traceback } : null
       });
       
