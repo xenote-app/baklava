@@ -1,6 +1,7 @@
 const Kernel = require('./Kernel');
 const debug = require('debug')('jupyter:server');
 
+
 class Server {
   constructor(options = {}) {
     this.sockets = new Map();
@@ -29,7 +30,7 @@ class Server {
     
     // Set up socket event handlers with improved error handling
     socket.on('kernel', async (message) => {
-      const { topic, docId, docPath, requestId, elementId, code } = message;
+      const { topic, docId, docPath, requestId, elementId, code, env } = message;
       let responseObj = { topic, docId, requestId };
 
       debug(`Received '${topic}' request from socket ${socketId}`, { docId, elementId, requestId });
@@ -40,7 +41,7 @@ class Server {
         }
 
         else if (topic === 'start') {
-          const kernel = await server.startKernel({ docId, docPath, socketId });
+          const kernel = await server.startKernel({ docId, docPath, socketId, env });
           kernel.addSubscriber(socketId);
           server.emitIndex();
         }
@@ -62,11 +63,6 @@ class Server {
           server.emitIndex();
         }
         
-        else if (topic === 'restart') {
-          responseObj.restarted = await server.restartKernel(docId);
-          server.emitIndex();
-        }
-
         else if (topic === 'dequeue') {
           this.getKernel(docId).removeFromQueue(elementId);
         }
@@ -137,13 +133,13 @@ class Server {
     this.emitAll({ topic: 'index', kernels });
   }
   
-  async startKernel({ docId, docPath, socketId }) {
+  async startKernel({ docId, docPath, socketId, env }) {
     // Check if kernel already exists
     if (this.kernels.has(docId)) {
       throw new Error('Kernel already running for the document.');
     }
     
-    const kernel = new Kernel(docId, docPath, this.options);
+    const kernel = new Kernel(docId, docPath, { env, ...this.options });
     
     await kernel.start();
     this.setupKernelMessageHandlers(kernel);
@@ -256,16 +252,6 @@ class Server {
     return await kernel.interrupt();
   }
   
-  async restartKernel(docId) {
-    const kernel = this.getKernel(docId);
-    await kernel.restart();
-    this.broadcastToSubscribers(kernel, {
-      topic: 'kernel_restarted',
-      docId,
-      timestamp: Date.now()
-    });
-    return true;
-  } 
   
   async getKernelStatus(docId) {
     const kernel = this.getKernel(docId);

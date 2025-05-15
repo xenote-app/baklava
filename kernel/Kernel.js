@@ -6,9 +6,11 @@ const zmq = require('zeromq');
 const crypto = require('crypto');
 const { v4: uuid } = require('uuid');
 const debug = require('debug')('jupyter:kernel');
+const  _ = require('lodash')
+
 
 class Kernel {
-  constructor(docId, docPath, options = {}) {
+  constructor(docId, docPath, options= {}) {
     this.docId = docId;
     this.docPath = docPath;
     this.emitter = new EventEmitter();
@@ -17,6 +19,7 @@ class Kernel {
     this.processing = false;
     this.currentExecutionId = null;
     this.verbose = options.verbose || false;
+    this.env = options.env || {};
     
     // Add subscriber tracking
     this.subscribers = new Set();
@@ -62,11 +65,15 @@ class Kernel {
 
   async start() {
     debug(`Starting kernel for document ${this.docId}`);
-    const connectionFilePath = path.join(require('os').tmpdir(), `kernel-${uuid()}.json`);
+    const
+      connectionFilePath = path.join(require('os').tmpdir(), `kernel-${uuid()}.json`),
+      env = _.extend({}, process.env, this.env),
+      cwd = path.join(process.cwd(), this.docPath);
     
     const kernelProcess = spawn(
       'jupyter',
-      ['kernel', '--KernelManager.connection_file=' + connectionFilePath]
+      ['kernel', '--KernelManager.connection_file=' + connectionFilePath],
+      { cwd, env }
     );
     
     kernelProcess.stdout.on('data', (data) => {
