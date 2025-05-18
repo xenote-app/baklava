@@ -1,4 +1,5 @@
 const Kernel = require('./Kernel');
+const { checkInstall } = require('./checkInstall');
 const debug = require('debug')('jupyter:server');
 
 
@@ -11,7 +12,10 @@ class Server {
       queueTimeout: options.queueTimeout || 60000, // Default timeout for queued executions
       ...options
     };
-    
+
+    this.installStatus = checkInstall();
+    this.installed = this.installStatus.installed && this.installStatus.meetsMinVersion;
+
     // Set up process exit handler for cleanup
     process.on('exit', () => {
       this.shutdownAllKernels();

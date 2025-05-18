@@ -69,11 +69,16 @@ class Kernel {
       connectionFilePath = path.join(require('os').tmpdir(), `kernel-${uuid()}.json`),
       env = _.extend({}, process.env, this.env),
       cwd = path.join(process.cwd(), this.docPath);
+
+    if (!fs.existsSync(cwd)) {
+      debug(`Creating directory for connection file: ${cwd}`);
+      fs.mkdirSync(cwd, { recursive: true });
+    }
     
     const kernelProcess = spawn(
       'jupyter',
       ['kernel', '--KernelManager.connection_file=' + connectionFilePath],
-      { cwd, env }
+      { env, cwd }
     );
     
     kernelProcess.stdout.on('data', (data) => {

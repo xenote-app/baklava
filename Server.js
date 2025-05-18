@@ -17,7 +17,9 @@ const
   ProcessManager = require('./ProcessManager'),
   WebSocketManager = require('./WebSocketManager'),
   VaniManager = require('./VaniManager'),
-  config = require('./config');
+  config = require('./config'),
+
+  { showInstallMessage } = require('./kernel/checkInstall');;
 
 
 corsPolicy = {
@@ -62,6 +64,9 @@ class Server {
         .catch(function(err) { next(new Error('Authentication error')); });
     });
 
+
+    showInstallMessage(kernelServer.installStatus);
+
     httpServer.listen(config.httpPort, function() {
       console.log('📡  HTTP Server running on port', config.httpPort)
     });
@@ -77,10 +82,15 @@ class Server {
     if (config.httpsPort) {
       const
         keyPath = path.join(config.certsDir, 'private-key.pem'),
-        certPath = path.join(config.certsDir, 'certificate.pem');
+        certPath = path.join(config.certsDir, 'certificate.pem'),
+        { colors } = require('./helpers/colors');
 
         if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
-          console.log('Run "baklava create-certs" to create SSL Certs and support HTTPS.');
+          console.log(
+            colors.yellow +
+            'Run "baklava create-certs" to create SSL Certs and support HTTPS.\n' +
+            colors.reset
+          );
         } else {
           const httpsServer = https.createServer({
             key: fs.readFileSync(keyPath),
@@ -98,6 +108,11 @@ class Server {
     vaniManager.listen(function() { console.log('📡  Vani running on port', config.vaniPort); });
 
     console.log('⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖');
+
+    // const { colors } = require('./helpers/colors');
+    if (kernelServer.installed) {
+      console.log('🪐  Jupyter Kernel is ready.')
+    }
   }
 }
 
