@@ -2,7 +2,7 @@ const { EventEmitter } = require('events');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const zmq = require('zeromq');
+const zmq = require('./zmq');
 const crypto = require('crypto');
 const { v4: uuid } = require('uuid');
 const debug = require('debug')('jupyter:kernel');
@@ -26,7 +26,8 @@ class Kernel {
     this.status = 'idle';
     this.activeExecutions = 0;
     this.lastActivity = Date.now();
-    
+
+        
     // Channel locks for preventing concurrent send operations
     this.channelLocks = {
       shell: Promise.resolve(),
@@ -202,6 +203,7 @@ class Kernel {
   async connectChannels() {
     const channels = {};
     const ci = this.connectionInfo;
+    const zmq = this.zmq;
 
     // Shell channel - for code execution requests
     channels.shell = new zmq.Request();

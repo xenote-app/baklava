@@ -22,6 +22,8 @@ const defaultMinVersion = {
  * @returns {{installed: boolean, versions: Object, meetsMinVersion: boolean, issues: Array}}
  */
 function checkInstall(minVersions = defaultMinVersion) {
+  const zmqInstalled = !!require('./zmq');
+
   try {
     const result = spawnSync('jupyter', ['--version'], { encoding: 'utf8' });
     
@@ -80,14 +82,15 @@ function checkInstall(minVersions = defaultMinVersion) {
       installed: true,
       versions: detectedVersions,
       meetsMinVersion: allMeetMinVersion,
-      issues
+      issues, zmqInstalled
     };
   } catch (error) {
     return {
       installed: false,
       versions: {},
       meetsMinVersion: false,
-      issues: [error.message || 'Unknown error checking Jupyter installation']
+      issues: [error.message || 'Unknown error checking Jupyter installation'],
+      zmqInstalled
     };
   }
 }
@@ -117,6 +120,14 @@ function compareVersions(v1, v2) {
 // ANSI color codes - no external dependencies needed
 function showInstallMessage(installStatus) {
   const { colors } = require('../helpers/colors');
+
+  if (!installStatus.zmqInstalled) {
+    console.log(
+      colors.red + 
+      'ZeroMQ package not available. Jupyter Kernel is disabled.' +
+      colors.reset
+    );
+  }
 
   if (!installStatus.installed) {
     console.log(

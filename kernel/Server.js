@@ -14,7 +14,11 @@ class Server {
     };
 
     this.installStatus = checkInstall();
-    this.installed = this.installStatus.installed && this.installStatus.meetsMinVersion;
+    this.installed = (
+      this.installStatus.installed &&
+      this.installStatus.meetsMinVersion &&
+      this.installStatus.zmqInstalled
+    );
 
     // Set up process exit handler for cleanup
     process.on('exit', () => {

@@ -65,7 +65,6 @@ class Server {
     });
 
 
-    showInstallMessage(kernelServer.installStatus);
 
     httpServer.listen(config.httpPort, function() {
       console.log('📡  HTTP Server running on port', config.httpPort)
@@ -73,10 +72,12 @@ class Server {
     io.attach(httpServer);
 
     // Kernel Socket Middleware
-    io.use(function(socket, next) {
-      kernelServer.handleSocket(socket);
-      next();
-    });
+    if (kernelServer.installed) {
+      io.use(function(socket, next) {
+        kernelServer.handleSocket(socket);
+        next();
+      });
+    }
 
     // HTTPS Suppoer
     if (config.httpsPort) {
@@ -112,6 +113,8 @@ class Server {
     // const { colors } = require('./helpers/colors');
     if (kernelServer.installed) {
       console.log('🪐  Jupyter Kernel is ready.')
+    } else {
+      showInstallMessage(kernelServer.installStatus);
     }
   }
 }
