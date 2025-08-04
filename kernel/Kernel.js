@@ -203,7 +203,6 @@ class Kernel {
   async connectChannels() {
     const channels = {};
     const ci = this.connectionInfo;
-    const zmq = this.zmq;
 
     // Shell channel - for code execution requests
     channels.shell = new zmq.Request();

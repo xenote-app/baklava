@@ -1,19 +1,19 @@
 const { spawnSync } = require('child_process');
 
 const defaultMinVersion = {
-  IPython: '9.2.0',
+  IPython: '8.0.0',
   ipykernel: '6.29.5',
-  ipywidgets: '8.1.7',
-  jupyter_client: '8.6.3',
-  jupyter_core: '5.7.2',
-  jupyter_server: '2.15.0',
-  jupyterlab: '4.4.1',
-  nbclient: '0.10.2',
-  nbconvert: '7.16.6',
-  nbformat: '5.10.4',
-  notebook: '7.4.1',
-  qtconsole: 'not installed',
-  traitlets: '5.14.3',
+  // ipywidgets: '8.1.7',
+  // jupyter_client: '8.6.3',
+  // jupyter_core: '5.7.2',
+  // jupyter_server: '2.15.0',
+  // jupyterlab: '4.4.1',
+  // nbclient: '0.10.2',
+  // nbconvert: '7.16.6',
+  // nbformat: '5.10.4',
+  // notebook: '7.4.1',
+  // qtconsole: 'not installed',
+  // traitlets: '5.14.3',
 };
 
 /**
