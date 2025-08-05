@@ -5,7 +5,8 @@ const
   program = require('commander'),
   Server = require('../Server'),
   { passwordsFileExists, fetchPasswords, setPassword, deleteUsername } = require('../helpers/password'),
-  { launchDaemon, checkDaemonStatus, killDaemon, isPortTaken } = require('../daemon/fns');
+  { launchDaemon, checkDaemonStatus, killDaemon, isPortTaken } = require('../daemon/fns'),
+  path = require('path');
 
 
 program.version('0.1');
@@ -19,19 +20,31 @@ function checkInitialized() {
   return true;
 }
 
+function warnIfNotSandbox() {
+  const currentDir = path.basename(process.cwd());
+
+  if (currentDir !== 'sandbox') {
+    console.warn('Warning: Baklava likes to run on a folder named "sandbox", ignore if intentional');
+    console.log('');
+  }
+}
+
 program.command('launch')
   .description('Starts baklava on this folder')
-  .action(function() {
+  .action(async function() {
+    warnIfNotSandbox();
+
     if (!checkInitialized())
       return;
-    isPortTaken().then(function(taken) {
-      if (taken) {
-        console.log('Baklava is already running.')
-        return;
-      }
-      const server = new Server();
-      server.start();      
-    })
+    
+    const taken = await isPortTaken();
+    if (taken) {
+      console.log('Baklava is already running.');
+      return;
+    }
+    
+    const server = new Server();
+    server.start();      
   });
 
 const daemon  = program.command('daemon')
@@ -39,8 +52,17 @@ daemon.description('Daemonize baklava');
 
 daemon.command('launch')
   .description('Launches baklava as a background process on this folder.')
-  .action(function() {
+  .action(async function() {
+    warnIfNotSandbox();
+
     if (!checkInitialized()) return;
+    
+    const taken = await isPortTaken();
+    if (taken) {
+      console.log('Baklava is already running.');
+      return;
+    }
+    
     launchDaemon();
   });
 
@@ -63,15 +85,16 @@ program.command('init')
       return;
     }
 
-  const
-    username = options.username || 'admin',
-    password = options.password || await askPassword(`🔑 Enter a new password for baklava user '${username}':`);
+    warnIfNotSandbox();
+    const
+      username = options.username || 'admin',
+      password = options.password || await askPassword(`🔑 Enter a new password for baklava user '${username}':`);
 
-  trySetPassword({ username, password });
-  console.log('Initialized');
-  console.log('username:', username);
-  console.log('password:', password);
-});
+    trySetPassword({ username, password });
+    console.log('Initialized');
+    console.log('username:', username);
+    console.log('password:', password);
+  });
 
 program.command('list-users')
   .description('List all usernames')
@@ -82,8 +105,8 @@ program.command('list-users')
   });
 
 program.command('create-user')
-  .description('List all usernames')
-  .argument('<username>', 'Username for which to change password of.')
+  .description('Create a new user')
+  .argument('<username>', 'Username to create.')
   .action(async function(username) {
     if (fetchPasswords()[username])
       return console.error('A user already exists with the username: ' + username);

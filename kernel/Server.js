@@ -141,12 +141,16 @@ class Server {
     this.emitAll({ topic: 'index', kernels });
   }
   
-  async startKernel({ docId, docPath, socketId, env }) {
+  async startKernel({ docId, docPath, socketId, env={} }) {
     // Check if kernel already exists
     if (this.kernels.has(docId)) {
       throw new Error('Kernel already running for the document.');
     }
-    
+
+    env.PYTHONPATH = process.env.PYTHONPATH ? `${process.cwd()}:${process.env.PYTHONPATH}` : process.cwd();
+    env.NODE_PATH = process.env.NODE_PATH ? `${process.cwd()}:${process.env.NODE_PATH}` : process.cwd();
+    console.log(env);
+
     const kernel = new Kernel(docId, docPath, { env, ...this.options });
     
     await kernel.start();

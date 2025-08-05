@@ -9,11 +9,6 @@ const
   kill = require('tree-kill');
 
 async function launchDaemon() {
-  const taken = await isPortTaken();
-  if (taken) {
-    console.log('Daemon is already running');
-    return
-  }
   const daemon = spawn('node', [path.join(__dirname, 'launcher.js')], {
     detached: true,
     stdio: ['ignore', 'ignore', 'ignore'],
