@@ -1,7 +1,7 @@
 const Kernel = require('./Kernel');
 const { checkInstall } = require('./checkInstall');
 const debug = require('debug')('jupyter:server');
-
+const config = require('../config');
 
 class Server {
   constructor(options = {}) {
@@ -149,7 +149,7 @@ class Server {
 
     env.PYTHONPATH = process.env.PYTHONPATH ? `${process.cwd()}:${process.env.PYTHONPATH}` : process.cwd();
     env.NODE_PATH = process.env.NODE_PATH ? `${process.cwd()}:${process.env.NODE_PATH}` : process.cwd();
-    console.log(env);
+    env.VANI_PORT = config.vaniPort;
 
     const kernel = new Kernel(docId, docPath, { env, ...this.options });
     

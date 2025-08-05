@@ -42,7 +42,7 @@ class ProcessMan {
     p.run({
       command: command,
       env: Object.assign(
-        { vaniPort: config.vaniPort, PYTHONPATH, NODE_PATH },
+        { VANI_PORT: config.vaniPort, PYTHONPATH, NODE_PATH },
         env || {}
       ),
       subPath: docPath

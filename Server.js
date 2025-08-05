@@ -87,11 +87,11 @@ class Server {
         { colors } = require('./helpers/colors');
 
         if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
-          console.log(
-            colors.yellow +
-            'Run "baklava create-certs" to create SSL Certs and support HTTPS.\n' +
-            colors.reset
-          );
+          // console.log(
+          //   colors.yellow +
+          //   'Run "baklava create-certs" to create SSL Certs and support HTTPS.\n' +
+          //   colors.reset
+          // );
         } else {
           const httpsServer = https.createServer({
             key: fs.readFileSync(keyPath),
