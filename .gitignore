@@ -62,3 +62,6 @@ typings/
 
 # mac os filth
 .DS_Store
+
+# claude code
+.claude/
