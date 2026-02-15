@@ -14,7 +14,6 @@ const path = require("path"),
   ProcessManager = require("./ProcessManager"),
   WebSocketManager = require("./WebSocketManager"),
   VaniManager = require("./VaniManager"),
-  MCPRelay = require("./MCPRelay"),
   config = require("./config"),
   { showInstallMessage } = require("./kernel/checkInstall");
 
@@ -74,13 +73,6 @@ class Server {
       });
     }
 
-    // MCP Socket Middleware
-    const mcpRelay = new MCPRelay({ port: config.mcpPort });
-    io.use(function (socket, next) {
-      mcpRelay.handleSocket(socket);
-      next();
-    });
-
     // HTTPS Suppoer
     if (config.httpsPort) {
       const keyPath = path.join(config.certsDir, "private-key.pem"),
@@ -116,11 +108,6 @@ class Server {
     });
     vaniManager.listen(function () {
       console.log("📡  Vani running on port", config.vaniPort);
-    });
-
-    // MCP Relay HTTP (for Claude Desktop)
-    mcpRelay.listen(function () {
-      console.log("📡  MCP Relay running on port", config.mcpPort);
     });
 
     console.log("⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖");

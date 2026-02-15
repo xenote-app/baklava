@@ -18,7 +18,6 @@ module.exports = Object.assign(
     httpPort: 3456,
     httpsPort: 3457,
     vaniPort: 3458,
-    mcpPort: 3459,
     certsDir: "./_certs",
   },
   localConfig,
